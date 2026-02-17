@@ -700,7 +700,7 @@ export const useGrading = (userId: string | undefined, savedAssessments?: any[])
 
       const { data: results, error: resultsError } = await supabase
         .from('student_results')
-        .select('*, students(name)')
+        .select('*, grading_students(name)')
         .eq('grading_id', gradingId)
 
       if (resultsError) throw resultsError
@@ -720,7 +720,7 @@ export const useGrading = (userId: string | undefined, savedAssessments?: any[])
 
         return {
           ...r,
-          student_name: r.students.name,
+          student_name: r.grading_students.name,
           absent: isAbsent
         }
       })
@@ -802,7 +802,7 @@ export const useGrading = (userId: string | undefined, savedAssessments?: any[])
       for (const grading of matchingGradings) {
         const { data: results, error: resultsError } = await supabase
           .from('student_results')
-          .select('*, students(name)')
+          .select('*, grading_students(name)')
           .eq('grading_id', grading.id)
 
         if (resultsError) throw resultsError
@@ -822,7 +822,7 @@ export const useGrading = (userId: string | undefined, savedAssessments?: any[])
 
           return {
             ...r,
-            student_name: r.students.name,
+            student_name: r.grading_students.name,
             absent: isAbsent
           }
         })
