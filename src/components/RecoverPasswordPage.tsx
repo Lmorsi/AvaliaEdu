@@ -15,15 +15,47 @@ const RecoverPasswordPage: React.FC = () => {
     setLoading(true)
 
     try {
+      // Validação adicional
+      if (!email || !email.includes('@')) {
+        throw new Error('Por favor, insira um e-mail válido')
+      }
+
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/redefinir-senha`
       })
 
-      if (error) throw error
+      if (error) {
+        console.error('Erro do Supabase:', error)
+        throw error
+      }
 
       setSuccess(true)
     } catch (err: any) {
-      setError(err.message || 'Erro ao enviar e-mail de recuperação')
+      console.error('Erro completo:', err)
+
+      // Mensagens de erro mais específicas
+      let errorMessage = 'Erro ao enviar e-mail de recuperação'
+
+      if (err.message) {
+        // Se for erro de rate limit
+        if (err.message.includes('rate limit') || err.message.includes('too many')) {
+          errorMessage = 'Muitas tentativas. Aguarde 60 segundos antes de tentar novamente.'
+        }
+        // Se for erro de email não encontrado
+        else if (err.message.includes('not found') || err.message.includes('user not')) {
+          errorMessage = 'E-mail não cadastrado. Verifique se digitou corretamente.'
+        }
+        // Se for erro de SMTP
+        else if (err.message.includes('SMTP') || err.message.includes('email')) {
+          errorMessage = 'Erro no servidor de e-mail. Tente novamente em alguns minutos.'
+        }
+        // Outros erros
+        else {
+          errorMessage = err.message
+        }
+      }
+
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
