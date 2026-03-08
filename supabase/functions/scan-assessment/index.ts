@@ -1,6 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.75.0";
-import jsQR from "npm:jsqr@1.4.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,6 +19,25 @@ interface QRCodeData {
   total_questions: number;
 }
 
+interface VisionTextAnnotation {
+  description: string;
+  boundingPoly?: {
+    vertices: Array<{ x: number; y: number }>;
+  };
+}
+
+interface VisionResponse {
+  responses: Array<{
+    textAnnotations?: VisionTextAnnotation[];
+    fullTextAnnotation?: {
+      text: string;
+    };
+    error?: {
+      message: string;
+    };
+  }>;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -31,13 +49,24 @@ Deno.serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const visionApiKey = Deno.env.get("GOOGLE_VISION_API_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    if (!visionApiKey) {
+      return new Response(
+        JSON.stringify({ error: "Google Vision API key not configured" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
 
     const { image, studentName } = await req.json();
 
-    if (!image || !studentName) {
+    if (!image) {
       return new Response(
-        JSON.stringify({ error: "Image and student name are required" }),
+        JSON.stringify({ error: "Image is required" }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -46,17 +75,12 @@ Deno.serve(async (req: Request) => {
     }
 
     const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
-    const imageBuffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
 
-    const imageData = await decodeImage(imageBuffer);
+    const visionResponse = await analyzeImageWithVision(base64Data, visionApiKey);
 
-    const qrCode = jsQR(
-      new Uint8ClampedArray(imageData.data),
-      imageData.width,
-      imageData.height
-    );
+    const qrData = await extractQRCodeData(visionResponse);
 
-    if (!qrCode) {
+    if (!qrData) {
       return new Response(
         JSON.stringify({
           error: "QR Code not found in image",
@@ -69,11 +93,24 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const qrData: QRCodeData = JSON.parse(qrCode.data);
+    let detectedStudentName = studentName;
+    if (!detectedStudentName) {
+      detectedStudentName = extractStudentNameFromVision(visionResponse);
+    }
 
-    const studentAnswers = await extractAnswersFromImage(imageData, qrData.total_questions);
+    if (!detectedStudentName) {
+      return new Response(
+        JSON.stringify({ error: "Student name is required and could not be detected" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
 
-    const normalizedStudentName = studentName.trim();
+    const studentAnswers = extractAnswersFromVision(visionResponse, qrData.total_questions);
+
+    const normalizedStudentName = detectedStudentName.trim();
 
     let { data: student, error: studentError } = await supabase
       .from("grading_students")
@@ -167,6 +204,7 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({
         success: true,
         studentId: student.id,
+        studentName: normalizedStudentName,
         score: score.score,
         correctCount: score.correctCount,
         incorrectCount: score.incorrectCount,
@@ -191,90 +229,133 @@ Deno.serve(async (req: Request) => {
   }
 });
 
-async function decodeImage(buffer: Uint8Array): Promise<{ data: number[]; width: number; height: number }> {
-  const blob = new Blob([buffer]);
-  const imageBitmap = await createImageBitmap(blob);
+async function analyzeImageWithVision(base64Image: string, apiKey: string): Promise<VisionResponse> {
+  const visionApiUrl = `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`;
 
-  const canvas = new OffscreenCanvas(imageBitmap.width, imageBitmap.height);
-  const ctx = canvas.getContext("2d");
+  const requestBody = {
+    requests: [
+      {
+        image: {
+          content: base64Image,
+        },
+        features: [
+          { type: "TEXT_DETECTION", maxResults: 50 },
+          { type: "DOCUMENT_TEXT_DETECTION", maxResults: 1 }
+        ],
+      },
+    ],
+  };
 
-  if (!ctx) {
-    throw new Error("Failed to get canvas context");
+  const response = await fetch(visionApiUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Vision API error: ${response.status} - ${errorText}`);
   }
 
-  ctx.drawImage(imageBitmap, 0, 0);
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-  return {
-    data: Array.from(imageData.data),
-    width: canvas.width,
-    height: canvas.height,
-  };
+  return await response.json();
 }
 
-async function extractAnswersFromImage(
-  imageData: { data: number[]; width: number; height: number },
-  totalQuestions: number
-): Promise<string[]> {
+async function extractQRCodeData(visionResponse: VisionResponse): Promise<QRCodeData | null> {
+  const textAnnotations = visionResponse.responses[0]?.textAnnotations;
+
+  if (!textAnnotations || textAnnotations.length === 0) {
+    return null;
+  }
+
+  for (const annotation of textAnnotations) {
+    try {
+      const text = annotation.description.trim();
+      if (text.startsWith('{') && text.includes('assessment_id')) {
+        const qrData = JSON.parse(text);
+        return qrData as QRCodeData;
+      }
+    } catch (e) {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+function extractStudentNameFromVision(visionResponse: VisionResponse): string {
+  const fullText = visionResponse.responses[0]?.fullTextAnnotation?.text || "";
+
+  const namePatterns = [
+    /Nome:\s*([A-Za-zÀ-ÿ\s]+)/i,
+    /Aluno:\s*([A-Za-zÀ-ÿ\s]+)/i,
+    /Estudante:\s*([A-Za-zÀ-ÿ\s]+)/i,
+    /Name:\s*([A-Za-zÀ-ÿ\s]+)/i,
+  ];
+
+  for (const pattern of namePatterns) {
+    const match = fullText.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+
+  const lines = fullText.split('\n').filter(line => line.trim().length > 0);
+  for (const line of lines.slice(0, 5)) {
+    if (line.length > 3 && line.length < 50 && /^[A-Za-zÀ-ÿ\s]+$/.test(line)) {
+      return line.trim();
+    }
+  }
+
+  return "";
+}
+
+function extractAnswersFromVision(visionResponse: VisionResponse, totalQuestions: number): string[] {
+  const textAnnotations = visionResponse.responses[0]?.textAnnotations;
   const answers: string[] = [];
 
-  for (let i = 0; i < totalQuestions; i++) {
-    const answer = detectMarkedAnswer(imageData, i);
-    answers.push(answer);
+  if (!textAnnotations) {
+    return Array(totalQuestions).fill('');
+  }
+
+  const fullText = visionResponse.responses[0]?.fullTextAnnotation?.text || "";
+  const lines = fullText.split('\n');
+
+  const questionPattern = /(\d+)\s*[.:-]?\s*([A-Ea-e])/;
+
+  for (let i = 1; i <= totalQuestions; i++) {
+    let found = false;
+
+    for (const line of lines) {
+      const match = line.match(questionPattern);
+      if (match && parseInt(match[1]) === i) {
+        answers.push(match[2].toUpperCase());
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) {
+      for (const annotation of textAnnotations) {
+        const text = annotation.description.trim();
+        if (text.length === 1 && /[A-Ea-e]/.test(text)) {
+          const checkPattern = new RegExp(`${i}\\s*[.:-]?\\s*${text}`, 'i');
+          if (fullText.match(checkPattern)) {
+            answers.push(text.toUpperCase());
+            found = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!found) {
+      answers.push('');
+    }
   }
 
   return answers;
-}
-
-function detectMarkedAnswer(
-  imageData: { data: number[]; width: number; height: number },
-  questionIndex: number
-): string {
-  const rowHeight = Math.floor(imageData.height / 30);
-  const y = 150 + (questionIndex * rowHeight);
-
-  const options = ['A', 'B', 'C', 'D', 'E'];
-  const optionWidth = Math.floor(imageData.width / 7);
-
-  let darkestOption = 'A';
-  let darkestValue = 255;
-
-  for (let optIdx = 0; optIdx < options.length; optIdx++) {
-    const x = 200 + (optIdx * optionWidth);
-    const darkness = calculateRegionDarkness(imageData, x, y, 40, 40);
-
-    if (darkness < darkestValue) {
-      darkestValue = darkness;
-      darkestOption = options[optIdx];
-    }
-  }
-
-  return darkestValue < 180 ? darkestOption : '';
-}
-
-function calculateRegionDarkness(
-  imageData: { data: number[]; width: number; height: number },
-  x: number,
-  y: number,
-  width: number,
-  height: number
-): number {
-  let totalBrightness = 0;
-  let pixelCount = 0;
-
-  for (let py = y; py < y + height && py < imageData.height; py++) {
-    for (let px = x; px < x + width && px < imageData.width; px++) {
-      const idx = (py * imageData.width + px) * 4;
-      const r = imageData.data[idx];
-      const g = imageData.data[idx + 1];
-      const b = imageData.data[idx + 2];
-      const brightness = (r + g + b) / 3;
-      totalBrightness += brightness;
-      pixelCount++;
-    }
-  }
-
-  return pixelCount > 0 ? totalBrightness / pixelCount : 255;
 }
 
 function calculateScore(
