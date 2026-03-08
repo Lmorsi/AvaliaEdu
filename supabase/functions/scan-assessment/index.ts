@@ -73,22 +73,68 @@ Deno.serve(async (req: Request) => {
 
     const studentAnswers = await extractAnswersFromImage(imageData, qrData.total_questions);
 
-    const { data: student, error: studentError } = await supabase
+    const normalizedStudentName = studentName.trim();
+
+    let { data: student, error: studentError } = await supabase
       .from("grading_students")
       .select("id")
       .eq("class_id", qrData.class_id)
-      .ilike("name", `%${studentName}%`)
+      .eq("name", normalizedStudentName)
       .maybeSingle();
+
+    if (!student && !studentError) {
+      const { data: newStudent, error: createError } = await supabase
+        .from("grading_students")
+        .insert({
+          class_id: qrData.class_id,
+          name: normalizedStudentName,
+        })
+        .select("id")
+        .maybeSingle();
+
+      if (createError) {
+        if (createError.code === '23505') {
+          const { data: existingStudent } = await supabase
+            .from("grading_students")
+            .select("id")
+            .eq("class_id", qrData.class_id)
+            .eq("name", normalizedStudentName)
+            .maybeSingle();
+
+          if (existingStudent) {
+            student = existingStudent;
+          }
+        }
+
+        if (!student) {
+          return new Response(
+            JSON.stringify({
+              error: "Failed to create student",
+              details: createError.message,
+              studentName: normalizedStudentName,
+              classId: qrData.class_id
+            }),
+            {
+              status: 500,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
+      } else {
+        student = newStudent;
+      }
+    }
 
     if (studentError || !student) {
       return new Response(
         JSON.stringify({
-          error: "Student not found",
-          studentName,
+          error: "Student lookup failed",
+          details: studentError?.message,
+          studentName: normalizedStudentName,
           classId: qrData.class_id
         }),
         {
-          status: 404,
+          status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
