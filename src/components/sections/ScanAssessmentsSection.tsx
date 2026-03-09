@@ -1,10 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { Camera, Upload, CheckCircle, XCircle, Loader } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
-<<<<<<< HEAD
 import CameraCapture from '../CameraCapture'
-=======
->>>>>>> 8dffcf8ebf46b838fc5df9a0fc90e9da2e3117be
 
 interface ScanResult {
   fileName: string
@@ -25,13 +22,8 @@ export default function ScanAssessmentsSection({ userId, classes, gradings }: Sc
   const [scanResults, setScanResults] = useState<ScanResult[]>([])
   const [isScanning, setIsScanning] = useState(false)
   const [studentName, setStudentName] = useState('')
-<<<<<<< HEAD
   const [showCamera, setShowCamera] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-=======
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const cameraInputRef = useRef<HTMLInputElement>(null)
->>>>>>> 8dffcf8ebf46b838fc5df9a0fc90e9da2e3117be
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
@@ -126,19 +118,15 @@ export default function ScanAssessmentsSection({ userId, classes, gradings }: Sc
     setStudentName('')
   }
 
-<<<<<<< HEAD
   const handleCameraCapture = (file: File) => {
     setSelectedFiles(prev => [...prev, file])
     setShowCamera(false)
   }
 
-=======
->>>>>>> 8dffcf8ebf46b838fc5df9a0fc90e9da2e3117be
   const successCount = scanResults.filter(r => r.status === 'success').length
   const errorCount = scanResults.filter(r => r.status === 'error').length
 
   return (
-<<<<<<< HEAD
     <>
       {showCamera && (
         <CameraCapture
@@ -148,9 +136,6 @@ export default function ScanAssessmentsSection({ userId, classes, gradings }: Sc
       )}
 
       <div className="bg-white rounded-lg shadow-md p-6">
-=======
-    <div className="bg-white rounded-lg shadow-md p-6">
->>>>>>> 8dffcf8ebf46b838fc5df9a0fc90e9da2e3117be
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-800 mb-2">Escanear e Corrigir Provas</h2>
         <p className="text-gray-600 text-sm">
@@ -186,20 +171,12 @@ export default function ScanAssessmentsSection({ userId, classes, gradings }: Sc
         </button>
 
         <button
-<<<<<<< HEAD
           onClick={() => setShowCamera(true)}
-=======
-          onClick={() => cameraInputRef.current?.click()}
->>>>>>> 8dffcf8ebf46b838fc5df9a0fc90e9da2e3117be
           disabled={isScanning}
           className="flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 transition-colors"
         >
           <Camera size={20} />
-<<<<<<< HEAD
           Capturar com Câmera
-=======
-          Tirar Foto
->>>>>>> 8dffcf8ebf46b838fc5df9a0fc90e9da2e3117be
         </button>
 
         <input
@@ -210,18 +187,6 @@ export default function ScanAssessmentsSection({ userId, classes, gradings }: Sc
           onChange={handleFileSelect}
           className="hidden"
         />
-<<<<<<< HEAD
-=======
-
-        <input
-          ref={cameraInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={handleFileSelect}
-          className="hidden"
-        />
->>>>>>> 8dffcf8ebf46b838fc5df9a0fc90e9da2e3117be
       </div>
 
       {selectedFiles.length > 0 && (
@@ -345,11 +310,7 @@ export default function ScanAssessmentsSection({ userId, classes, gradings }: Sc
           </p>
         </div>
       )}
-<<<<<<< HEAD
       </div>
     </>
-=======
-    </div>
->>>>>>> 8dffcf8ebf46b838fc5df9a0fc90e9da2e3117be
   )
 }
