@@ -53,6 +53,7 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     if (!visionApiKey) {
+      console.error("Google Vision API key not configured");
       return new Response(
         JSON.stringify({ error: "Google Vision API key not configured" }),
         {
@@ -62,9 +63,27 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { image, studentName } = await req.json();
+    let body;
+    try {
+      body = await req.json();
+    } catch (parseError) {
+      console.error("Failed to parse request body:", parseError);
+      return new Response(
+        JSON.stringify({
+          error: "Invalid request body",
+          details: parseError instanceof Error ? parseError.message : "Unknown error"
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const { image, studentName } = body;
 
     if (!image) {
+      console.error("No image provided in request");
       return new Response(
         JSON.stringify({ error: "Image is required" }),
         {
@@ -74,13 +93,19 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    console.log("Processing image, size:", image.length);
+
     const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
 
+    console.log("Calling Vision API...");
     const visionResponse = await analyzeImageWithVision(base64Data, visionApiKey);
+    console.log("Vision API response received");
 
+    console.log("Extracting QR Code data...");
     const qrData = await extractQRCodeData(visionResponse);
 
     if (!qrData) {
+      console.error("QR Code not found in image");
       return new Response(
         JSON.stringify({
           error: "QR Code not found in image",
@@ -92,6 +117,12 @@ Deno.serve(async (req: Request) => {
         }
       );
     }
+
+    console.log("QR Code data extracted:", {
+      assessment_id: qrData.assessment_id,
+      class_id: qrData.class_id,
+      grading_id: qrData.grading_id
+    });
 
     let detectedStudentName = studentName;
     if (!detectedStudentName) {
@@ -246,20 +277,33 @@ async function analyzeImageWithVision(base64Image: string, apiKey: string): Prom
     ],
   };
 
-  const response = await fetch(visionApiUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(requestBody),
-  });
+  try {
+    const response = await fetch(visionApiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestBody),
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Vision API error: ${response.status} - ${errorText}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Vision API error:", response.status, errorText);
+      throw new Error(`Vision API error: ${response.status} - ${errorText}`);
+    }
+
+    const result = await response.json();
+
+    if (result.responses && result.responses[0]?.error) {
+      console.error("Vision API returned error:", result.responses[0].error);
+      throw new Error(`Vision API error: ${result.responses[0].error.message}`);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Error calling Vision API:", error);
+    throw error;
   }
-
-  return await response.json();
 }
 
 async function extractQRCodeData(visionResponse: VisionResponse): Promise<QRCodeData | null> {

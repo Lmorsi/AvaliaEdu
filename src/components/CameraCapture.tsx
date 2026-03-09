@@ -161,7 +161,9 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
+    ctx.save()
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+    ctx.restore()
 
     canvas.toBlob((blob) => {
       if (blob) {
@@ -210,7 +212,6 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
             playsInline
             muted
             className="w-full h-full object-contain"
-            style={{ transform: 'scaleX(-1)' }}
           />
           <canvas ref={canvasRef} className="hidden" />
 
