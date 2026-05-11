@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -17,6 +17,7 @@ declare const jsQR: any
 
 const ScanPage: React.FC = () => {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { user } = useAuth()
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -31,6 +32,15 @@ const ScanPage: React.FC = () => {
   const [jsQRLoaded, setJsQRLoaded] = useState(false)
   const [manualToken, setManualToken] = useState('')
   const [showManual, setShowManual] = useState(false)
+
+  // Se vier com ?token= na URL (deep link do QR code), processar direto
+  useEffect(() => {
+    const urlToken = searchParams.get('token')
+    if (urlToken && user) {
+      processToken(urlToken)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user])
 
   // Carregar jsQR dinamicamente
   useEffect(() => {
@@ -55,37 +65,66 @@ const ScanPage: React.FC = () => {
     setCameraReady(false)
   }, [])
 
-  const processToken = useCallback(async (token: string) => {
-    if (!token || token === lastScannedRef.current) return
-    lastScannedRef.current = token
-    setScanState('loading')
-    stopCamera()
+  // Lookup by token string in assessment_tokens table
+  const lookupByToken = useCallback(async (token: string): Promise<boolean> => {
+    const { data: tokenRow, error: tokenErr } = await supabase
+      .from('assessment_tokens')
+      .select('*, grading_students(name), assessments(nome_avaliacao, tipo_avaliacao), classes(name)')
+      .eq('token', token)
+      .maybeSingle()
 
-    try {
-      // Buscar token no banco
-      const { data: tokenRow, error: tokenErr } = await supabase
-        .from('assessment_tokens')
-        .select('*, grading_students(name), assessments(nome_avaliacao, tipo_avaliacao), classes(name)')
-        .eq('token', token)
-        .maybeSingle()
+    if (tokenErr || !tokenRow) return false
 
-      if (tokenErr || !tokenRow) {
-        setScanState('error')
-        setErrorMsg('Token inválido ou não encontrado. Verifique se o cartão pertence a esta plataforma.')
-        return
-      }
+    if (tokenRow.user_id !== user?.id) {
+      setScanState('error')
+      setErrorMsg('Este cartão pertence a outro professor.')
+      return true
+    }
 
+    const { data: existingResult } = await supabase
+      .from('student_results')
+      .select('id')
+      .eq('student_id', tokenRow.student_id)
+      .maybeSingle()
+
+    const assessmentName =
+      tokenRow.assessments?.nome_avaliacao ||
+      tokenRow.assessments?.tipo_avaliacao ||
+      tokenRow.qr_code_data?.assessment_name ||
+      'Avaliação'
+
+    setScannedData({
+      token,
+      studentName: tokenRow.grading_students?.name || 'Aluno',
+      assessmentName,
+      className: tokenRow.classes?.name || tokenRow.qr_code_data?.class_name || 'Turma',
+      alreadyGraded: !!existingResult,
+    })
+    setScanState('success')
+    return true
+  }, [user?.id])
+
+  // Lookup by assessmentId + studentId for legacy QR codes (token: null)
+  const lookupByIds = useCallback(async (assessmentId: string, studentId: string, fallbackName: string): Promise<boolean> => {
+    // First try to find an existing token for this pair
+    const { data: tokenRow } = await supabase
+      .from('assessment_tokens')
+      .select('token, user_id, grading_students(name), assessments(nome_avaliacao, tipo_avaliacao), classes(name), qr_code_data')
+      .eq('assessment_id', assessmentId)
+      .eq('student_id', studentId)
+      .maybeSingle()
+
+    if (tokenRow) {
       if (tokenRow.user_id !== user?.id) {
         setScanState('error')
         setErrorMsg('Este cartão pertence a outro professor.')
-        return
+        return true
       }
 
-      // Verificar se já tem correção registrada
       const { data: existingResult } = await supabase
         .from('student_results')
-        .select('id, assessment_gradings(assessment_name)')
-        .eq('student_id', tokenRow.student_id)
+        .select('id')
+        .eq('student_id', studentId)
         .maybeSingle()
 
       const assessmentName =
@@ -95,18 +134,71 @@ const ScanPage: React.FC = () => {
         'Avaliação'
 
       setScannedData({
-        token,
-        studentName: tokenRow.grading_students?.name || 'Aluno',
+        token: tokenRow.token,
+        studentName: tokenRow.grading_students?.name || fallbackName || 'Aluno',
         assessmentName,
         className: tokenRow.classes?.name || tokenRow.qr_code_data?.class_name || 'Turma',
         alreadyGraded: !!existingResult,
       })
       setScanState('success')
+      return true
+    }
+
+    // No token registered yet — show info from the JSON payload itself
+    setScannedData({
+      token: '',
+      studentName: fallbackName || 'Aluno',
+      assessmentName: 'Avaliação',
+      className: 'Turma',
+      alreadyGraded: false,
+    })
+    setScanState('error')
+    setErrorMsg('Este cartão ainda não foi registrado no sistema. Gere as folhas pela plataforma para vincular os alunos.')
+    return true
+  }, [user?.id])
+
+  const processToken = useCallback(async (rawValue: string) => {
+    if (!rawValue || rawValue === lastScannedRef.current) return
+    lastScannedRef.current = rawValue
+    setScanState('loading')
+    stopCamera()
+
+    try {
+      // Try JSON parse first (legacy format or old QR codes)
+      try {
+        const parsed = JSON.parse(rawValue)
+        // New format: has a real token string
+        if (parsed.token && typeof parsed.token === 'string') {
+          await lookupByToken(parsed.token)
+          return
+        }
+        // Legacy format: token is null but has assessmentId + studentId
+        if (parsed.assessmentId && parsed.studentId) {
+          await lookupByIds(parsed.assessmentId, parsed.studentId, parsed.nomeAvaliacao || '')
+          return
+        }
+      } catch {
+        // Not JSON — could be a plain token string or a URL
+      }
+
+      // Check if it's a deep-link URL: https://site.com/s/TOKEN
+      const urlMatch = rawValue.match(/\/s\/([^/?#]+)/)
+      if (urlMatch) {
+        await lookupByToken(decodeURIComponent(urlMatch[1]))
+        return
+      }
+
+      // Treat as plain token string
+      const found = await lookupByToken(rawValue)
+      if (!found) {
+        setScanState('error')
+        setErrorMsg('QR code não reconhecido ou token inválido. Verifique se o cartão pertence a esta plataforma.')
+      }
     } catch (e) {
       setScanState('error')
-      setErrorMsg('Erro ao validar o token. Tente novamente.')
+      setErrorMsg('Erro ao validar o cartão. Tente novamente.')
     }
-  }, [user?.id, stopCamera])
+  }, [stopCamera, lookupByToken, lookupByIds])
 
   const startScanning = useCallback(() => {
     if (!cameraReady || !jsQRLoaded) return
@@ -129,20 +221,9 @@ const ScanPage: React.FC = () => {
         inversionAttempts: 'dontInvert',
       })
 
-      if (code?.data) {
-        try {
-          const parsed = JSON.parse(code.data)
-          if (parsed.token) {
-            processToken(parsed.token)
-            return
-          }
-        } catch {
-          // QR code texto simples
-          if (code.data.length > 5) {
-            processToken(code.data)
-            return
-          }
-        }
+      if (code?.data && code.data.length > 5) {
+        processToken(code.data)
+        return
       }
 
       animFrameRef.current = requestAnimationFrame(tick)

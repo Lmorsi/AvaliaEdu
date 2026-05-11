@@ -61,16 +61,22 @@ const generateAnswerSheet = async (finalData) => {
     }
   }).filter(q => q !== null);
 
-  // 2. GERAR O QR CODE ESPECÍFICO COM O GABARITO COMPLETO
-  const qrCodeData = JSON.stringify({
-    assessmentId: assessmentId || 'avaliacao_' + Date.now(),
-    nomeAvaliacao: nomeAvaliacao || 'Avaliação',
-    studentId: studentId || 'aluno',
-    token: studentToken || null,
-    timestamp: Date.now(),
-    gabarito: gabaritoEspecifico,
-    totalQuestoes: gabaritoEspecifico.length
-  });
+  // 2. GERAR O QR CODE ESPECÍFICO
+  // Se studentToken for uma URL (deep link), usar diretamente para que a câmera
+  // do celular abra o site automaticamente sem precisar de app.
+  // Caso contrário, embrulhar em JSON com gabarito (formato legado).
+  const isUrl = studentToken && (studentToken.startsWith('http://') || studentToken.startsWith('https://'));
+  const qrCodeData = isUrl
+    ? studentToken
+    : JSON.stringify({
+        assessmentId: assessmentId || 'avaliacao_' + Date.now(),
+        nomeAvaliacao: nomeAvaliacao || 'Avaliação',
+        studentId: studentId || 'aluno',
+        token: studentToken || null,
+        timestamp: Date.now(),
+        gabarito: gabaritoEspecifico,
+        totalQuestoes: gabaritoEspecifico.length
+      });
 
   let qrCodeImageBase64 = '';
   try {

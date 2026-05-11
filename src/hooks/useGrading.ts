@@ -1017,6 +1017,8 @@ export const useGrading = (userId: string | undefined, savedAssessments?: any[])
 
     const fetchPdfForStudent = async (student: any): Promise<{ student: any; blob: Blob }> => {
       const token = existingTokenMap[student.id]
+      // QR code encodes a deep link URL so the phone camera opens the site directly
+      const qrUrl = `${window.location.origin}/s/${encodeURIComponent(token)}`
       const payload = {
         nomeAvaliacao: assessment.nome_avaliacao || assessment.tipo_avaliacao || 'Avaliação',
         nomeEscola: assessment.nome_escola || '',
@@ -1036,7 +1038,7 @@ export const useGrading = (userId: string | undefined, savedAssessments?: any[])
         selectedItems: items,
         studentId: student.id,
         studentName: student.name,
-        studentToken: token,
+        studentToken: qrUrl,
         qrCodeSize: 35,
       }
 

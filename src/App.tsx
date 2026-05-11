@@ -1,5 +1,5 @@
 import React from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
@@ -16,6 +16,7 @@ import ReportsPage from './components/ReportsPage'
 import AdminPage from './pages/AdminPage'
 import TestEmailPage from './pages/TestEmailPage'
 import ScanPage from './pages/ScanPage'
+import QRLandingPage from './pages/QRLandingPage'
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth()
@@ -54,7 +55,16 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 }
 
 const DashboardRouter: React.FC = () => {
-  const [currentView, setCurrentView] = React.useState<'main' | 'grading' | 'reports'>('main')
+  const location = useLocation()
+  const locationState = location.state as { view?: string; token?: string } | null
+
+  const initialView = locationState?.view === 'grading'
+    ? 'grading'
+    : locationState?.view === 'reports'
+      ? 'reports'
+      : 'main'
+
+  const [currentView, setCurrentView] = React.useState<'main' | 'grading' | 'reports'>(initialView)
 
   return (
     <>
@@ -133,6 +143,8 @@ function App() {
               </ProtectedRoute>
             }
           />
+          {/* Deep link público para QR codes: /s/:token */}
+          <Route path="/s/:token" element={<QRLandingPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>
