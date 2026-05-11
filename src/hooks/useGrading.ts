@@ -1005,7 +1005,7 @@ export const useGrading = (userId: string | undefined, savedAssessments?: any[])
     }))
 
     const serverUrls = [
-      'https://bolt-1212-production.up.railway.app/api/generate-pdf',
+      'https://avaliaedu-production.up.railway.app',
       'https://avaliacao-pdf-server.onrender.com/api/generate-pdf',
       'http://localhost:3001/api/generate-pdf',
     ]
