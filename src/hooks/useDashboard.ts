@@ -264,11 +264,8 @@ export const useDashboard = (userId: string | undefined) => {
 
     // Tentar diferentes URLs do servidor
     const serverUrls = [
-      `https://bolt-1212-production.up.railway.app/api/${endpoint}`,
-      `https://avaliacao-pdf-server.onrender.com/api/${endpoint}`,
-      `https://avaliacao-pdf-server.railway.app/api/${endpoint}`,
+      `https://avaliaedu-production.up.railway.app/api/${endpoint}`,
       `http://localhost:3001/api/${endpoint}`,
-      `https://avaliacao-pdf-server.herokuapp.com/api/${endpoint}`
     ]
     
     let response = null
@@ -966,11 +963,8 @@ export const useDashboard = (userId: string | undefined) => {
 
       // Tentar diferentes URLs do servidor
       const serverUrls = [
-        'https://bolt-1212-production.up.railway.app/api/generate-pdf',
-        'https://avaliacao-pdf-server.onrender.com/api/generate-pdf',
-        'https://avaliacao-pdf-server.railway.app/api/generate-pdf',
+        'https://avaliaedu-production.up.railway.app/api/generate-pdf',
         'http://localhost:3001/api/generate-pdf',
-        'https://avaliacao-pdf-server.herokuapp.com/api/generate-pdf'
       ]
 
       let response = null
