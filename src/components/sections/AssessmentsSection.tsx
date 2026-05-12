@@ -680,8 +680,81 @@ const AssessmentsSection: React.FC<AssessmentsSectionProps> = ({ dashboard }) =>
                 className="flex-1 bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700 transition-colors text-sm flex items-center justify-center"
               >
                 <i className="fas fa-file-pdf mr-2"></i>
-                Gerar PDF
+                Gerar PDF da Avaliação
               </button>
+            </div>
+
+            {/* Folhas individuais com QR code */}
+            <div className="border border-blue-200 rounded-lg bg-blue-50 p-4 space-y-3">
+              <div className="flex items-start gap-2">
+                <i className="fas fa-id-card text-blue-500 mt-0.5 text-sm flex-shrink-0"></i>
+                <div>
+                  <p className="text-sm font-medium text-blue-800">Imprimir Folhas Individuais</p>
+                  <p className="text-xs text-blue-600 mt-0.5">
+                    Gera uma folha de resposta com QR code único para cada aluno. Selecione a avaliação e a turma.
+                  </p>
+                </div>
+              </div>
+
+              {/* Seletor de avaliação */}
+              <button
+                onClick={() => dashboard.setShowSheetsAssessmentModal(true)}
+                className="w-full px-3 py-2.5 text-left text-sm border border-blue-300 rounded-md hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white transition-colors"
+              >
+                {dashboard.selectedAssessmentForSheets ? (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-gray-900">
+                        {dashboard.selectedAssessmentForSheets.nome_avaliacao ||
+                         dashboard.selectedAssessmentForSheets.nomeAvaliacao ||
+                         dashboard.selectedAssessmentForSheets.tipo_avaliacao ||
+                         dashboard.selectedAssessmentForSheets.tipoAvaliacao || 'Avaliação sem nome'}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {(dashboard.selectedAssessmentForSheets.selected_items || dashboard.selectedAssessmentForSheets.selectedItems || []).length} questões
+                        {dashboard.selectedAssessmentForSheets.turma ? ` · Turma: ${dashboard.selectedAssessmentForSheets.turma}` : ''}
+                      </p>
+                    </div>
+                    <i className="fas fa-chevron-down text-gray-400 flex-shrink-0"></i>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between text-gray-500">
+                    <span>Selecionar Avaliação *</span>
+                    <i className="fas fa-chevron-down text-gray-400 flex-shrink-0"></i>
+                  </div>
+                )}
+              </button>
+
+              {/* Seletor de turma + botão imprimir */}
+              <div className="flex flex-col sm:flex-row gap-2">
+                <select
+                  value={dashboard.selectedClassForSheets?.id || ''}
+                  onChange={e => {
+                    const cls = dashboard.classes?.find((c: any) => c.id.toString() === e.target.value)
+                    dashboard.setSelectedClassForSheets(cls || null)
+                  }}
+                  className="flex-1 border border-blue-300 rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                >
+                  <option value="">Selecione a turma...</option>
+                  {(dashboard.classes || []).map((cls: any) => (
+                    <option key={cls.id} value={cls.id}>{cls.name}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => dashboard.handleGenerateSheetsFromSelectedAssessment(dashboard.selectedClassForSheets)}
+                  disabled={!dashboard.selectedClassForSheets || !dashboard.selectedAssessmentForSheets}
+                  className="flex-1 sm:flex-none bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors text-sm font-medium disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <i className="fas fa-print text-sm"></i>
+                  Imprimir cartões-resposta
+                </button>
+              </div>
+
+              {dashboard.classes?.length === 0 && (
+                <p className="text-xs text-gray-500">
+                  Nenhuma turma encontrada. Crie turmas em "Corrigir Avaliação &gt; Gerenciar Turmas".
+                </p>
+              )}
             </div>
           </div>
         )}

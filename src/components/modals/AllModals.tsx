@@ -692,7 +692,7 @@ const AllModals: React.FC<AllModalsProps> = ({ dashboard, onNavigateToGrading, o
                   className="flex-1 bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 transition-colors"
                 >
                   <i className="fas fa-rocket mr-2"></i>
-                  Gerar PDF
+                  Gerar PDF da Avaliação
                 </button>
               </div>
             </div>
@@ -1211,6 +1211,100 @@ const AllModals: React.FC<AllModalsProps> = ({ dashboard, onNavigateToGrading, o
             <div className="flex justify-end p-4 border-t bg-gray-50">
               <button
                 onClick={() => dashboard.setShowAssessmentSelectionModal(false)}
+                className="bg-gray-600 text-white py-2 px-4 rounded-md hover:bg-gray-700 transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Seleção de Avaliação para Imprimir Folhas */}
+      {dashboard.showSheetsAssessmentModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">
+                <i className="fas fa-print mr-2 text-blue-600"></i>
+                Selecionar Avaliação para Imprimir Folhas
+              </h3>
+              <button
+                onClick={() => dashboard.setShowSheetsAssessmentModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <i className="fas fa-times text-xl"></i>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="space-y-3">
+                {dashboard.savedAssessments
+                  .sort((a: any, b: any) => {
+                    const dateA = new Date(a.created_at || a.data_criacao).getTime()
+                    const dateB = new Date(b.created_at || b.data_criacao).getTime()
+                    return dateB - dateA
+                  })
+                  .map((assessment: any) => {
+                    const selectedItems = assessment.selectedItems || assessment.selected_items || []
+                    const nomeAvaliacao = assessment.nomeAvaliacao || assessment.nome_avaliacao ||
+                                          assessment.tipoAvaliacao || assessment.tipo_avaliacao || 'Avaliação sem nome'
+                    const tipoAvaliacao = assessment.tipoAvaliacao || assessment.tipo_avaliacao || 'Sem tipo'
+                    const dataCreated = new Date(assessment.created_at || assessment.data_criacao)
+                    const isSelected = dashboard.selectedAssessmentForSheets?.id === assessment.id
+
+                    return (
+                      <button
+                        key={assessment.id}
+                        onClick={() => {
+                          dashboard.setSelectedAssessmentForSheets(assessment)
+                          dashboard.setShowSheetsAssessmentModal(false)
+                        }}
+                        className={`w-full text-left p-4 border-2 rounded-lg transition-all hover:shadow-md ${
+                          isSelected
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 hover:border-blue-300'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h4 className="font-medium text-gray-900 mb-1">{nomeAvaliacao}</h4>
+                            <div className="flex items-center space-x-3 text-sm text-gray-600">
+                              <span className="flex items-center">
+                                <i className="fas fa-tag mr-1 text-blue-500"></i>
+                                {tipoAvaliacao}
+                              </span>
+                              <span className="flex items-center">
+                                <i className="fas fa-question-circle mr-1 text-gray-400"></i>
+                                {selectedItems.length} questões
+                              </span>
+                              <span className="flex items-center">
+                                <i className="fas fa-calendar mr-1 text-gray-400"></i>
+                                {dataCreated.toLocaleDateString('pt-BR')}
+                              </span>
+                            </div>
+                            {assessment.turma && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                <i className="fas fa-users mr-1"></i>
+                                Turma: {assessment.turma}
+                              </p>
+                            )}
+                          </div>
+                          {isSelected && (
+                            <div className="ml-4">
+                              <i className="fas fa-check-circle text-2xl text-blue-600"></i>
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                    )
+                  })}
+              </div>
+            </div>
+
+            <div className="flex justify-end p-4 border-t bg-gray-50">
+              <button
+                onClick={() => dashboard.setShowSheetsAssessmentModal(false)}
                 className="bg-gray-600 text-white py-2 px-4 rounded-md hover:bg-gray-700 transition-colors"
               >
                 Cancelar

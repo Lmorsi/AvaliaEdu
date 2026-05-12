@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { generateUniqueToken } from '../lib/tokenUtils'
 import type { Item, Assessment } from '../lib/supabase'
 
 export const useDashboard = (userId: string | undefined) => {
@@ -101,6 +102,8 @@ export const useDashboard = (userId: string | undefined) => {
   const [showGradingModal, setShowGradingModal] = useState(false)
   const [showFolderModal, setShowFolderModal] = useState(false)
   const [showAssessmentSelectionModal, setShowAssessmentSelectionModal] = useState(false)
+  const [showSheetsAssessmentModal, setShowSheetsAssessmentModal] = useState(false)
+  const [selectedAssessmentForSheets, setSelectedAssessmentForSheets] = useState<any>(null)
 
   // Estados para controlar se a pesquisa foi realizada
   const [hasSearched, setHasSearched] = useState({
@@ -116,7 +119,7 @@ export const useDashboard = (userId: string | undefined) => {
 
   // Lista de itens salvos
   const [savedItems, setSavedItems] = useState<any[]>([])
-  const [isLoadingItems, setIsLoadingItems] = useState(false)
+  const [isLoadingItems, setIsLoadingItems] = useState(!!userId)
 
   // Lista de itens selecionados para a avaliação
   const [selectedItemsForAssessment, setSelectedItemsForAssessment] = useState([])
@@ -134,7 +137,7 @@ export const useDashboard = (userId: string | undefined) => {
   // Estados para avaliações salvas
   const [savedAssessments, setSavedAssessments] = useState<any[]>([])
   const [selectedAssessment, setSelectedAssessment] = useState(null)
-  const [isLoadingAssessments, setIsLoadingAssessments] = useState(false)
+  const [isLoadingAssessments, setIsLoadingAssessments] = useState(!!userId)
 
   // Estados para perfil de usuário
   const [userProfile, setUserProfile] = useState({
@@ -157,13 +160,83 @@ export const useDashboard = (userId: string | undefined) => {
   // Estado para rastrear itens adicionados
   const [addedItemIds, setAddedItemIds] = useState<Set<string>>(new Set())
 
+  // Estado para turmas (usado ao gerar folhas individuais na criação de avaliação)
+  const [classes, setClasses] = useState<any[]>([])
+  const [selectedClassForSheets, setSelectedClassForSheets] = useState<any>(null)
+  const [lastSavedAssessmentId, setLastSavedAssessmentId] = useState<string | null>(null)
+
   // Carregar itens ao montar ou quando userId mudar
   useEffect(() => {
     if (userId) {
       loadItems()
       loadAssessments()
+      loadClasses()
     }
   }, [userId])
+
+  // Re-executar pesquisa automaticamente quando os dados chegarem do banco
+  useEffect(() => {
+    if (hasSearched.items) {
+      setSearchResults((prev: any) => {
+        let filteredItems = [...savedItems]
+        // re-aplicar filtros ativos
+        if (itemFilters.keywords) {
+          filteredItems = filteredItems.filter((item: any) =>
+            (item.texto_item || '').toLowerCase().includes(itemFilters.keywords.toLowerCase()) ||
+            (item.descritor || '').toLowerCase().includes(itemFilters.keywords.toLowerCase()) ||
+            (item.disciplina || '').toLowerCase().includes(itemFilters.keywords.toLowerCase())
+          )
+        }
+        if (itemFilters.subject && itemFilters.subject !== "") {
+          filteredItems = filteredItems.filter((item: any) => item.disciplina === itemFilters.subject)
+        }
+        if (!itemFilters.questionTypes.includes("Todas")) {
+          filteredItems = filteredItems.filter((item: any) => {
+            const tipoMap: any = { "multipla_escolha": "Múltipla Escolha", "verdadeiro_falso": "Verdadeiro/Falso", "discursiva": "Discursiva" }
+            return itemFilters.questionTypes.includes(tipoMap[item.tipo_item])
+          })
+        }
+        return { ...prev, items: filteredItems }
+      })
+    }
+  }, [savedItems])
+
+  useEffect(() => {
+    if (hasSearched.assessments) {
+      let filteredAssessments = [...savedAssessments]
+      if (assessmentFilters.keywords) {
+        filteredAssessments = filteredAssessments.filter((a: any) =>
+          (a.nome_avaliacao || '').toLowerCase().includes(assessmentFilters.keywords.toLowerCase()) ||
+          (a.tipo_avaliacao || '').toLowerCase().includes(assessmentFilters.keywords.toLowerCase()) ||
+          (a.professor || '').toLowerCase().includes(assessmentFilters.keywords.toLowerCase()) ||
+          (a.turma || '').toLowerCase().includes(assessmentFilters.keywords.toLowerCase())
+        )
+      }
+      if (assessmentFilters.dateFrom) {
+        filteredAssessments = filteredAssessments.filter((a: any) =>
+          new Date(a.created_at).toISOString().split('T')[0] >= assessmentFilters.dateFrom
+        )
+      }
+      if (assessmentFilters.dateTo) {
+        filteredAssessments = filteredAssessments.filter((a: any) =>
+          new Date(a.created_at).toISOString().split('T')[0] <= assessmentFilters.dateTo
+        )
+      }
+      if (!assessmentFilters.assessmentTypes.includes("Todas")) {
+        filteredAssessments = filteredAssessments.filter((a: any) =>
+          assessmentFilters.assessmentTypes.includes(a.tipo_avaliacao)
+        )
+      }
+      const formattedResults = filteredAssessments.map((a: any) => ({
+        id: a.id,
+        title: a.nome_avaliacao || a.tipo_avaliacao || 'Avaliação sem nome',
+        description: `${a.turma || 'Sem turma'} - ${a.selectedItems?.length || 0} questões`,
+        date: new Date(a.created_at).toLocaleDateString('pt-BR'),
+        ...a
+      }))
+      setSearchResults((prev: any) => ({ ...prev, assessments: formattedResults }))
+    }
+  }, [savedAssessments])
 
   // Função para carregar itens do banco
   const loadItems = async () => {
@@ -217,6 +290,248 @@ export const useDashboard = (userId: string | undefined) => {
     }
   }
 
+  // Função para carregar turmas do banco
+  const loadClasses = async () => {
+    if (!userId) return
+    try {
+      const { data, error } = await supabase
+        .from('classes')
+        .select('*')
+        .eq('user_id', userId)
+        .order('name', { ascending: true })
+      if (error) throw error
+      setClasses(data || [])
+    } catch (error) {
+      console.error('Erro ao carregar turmas:', error)
+    }
+  }
+
+  // Gerar folhas individuais com QR code para todos os alunos de uma turma
+  const handleGenerateStudentSheets = async (assessment: any, classItem: any) => {
+    if (!userId || !assessment || !classItem) return
+
+    const assessmentId = assessment.id?.toString()
+    if (!assessmentId) {
+      alert('Salve a avaliação antes de gerar as folhas individuais.')
+      return
+    }
+
+    const { data: classStudents, error: studentsErr } = await supabase
+      .from('grading_students')
+      .select('*')
+      .eq('class_id', classItem.id)
+      .order('name', { ascending: true })
+
+    if (studentsErr || !classStudents?.length) {
+      alert('Nenhum aluno encontrado nesta turma.')
+      return
+    }
+
+    // Garantir tokens para todos os alunos
+    const studentIds = classStudents.map((s: any) => s.id)
+    const { data: existingTokens } = await supabase
+      .from('assessment_tokens')
+      .select('token, student_id')
+      .eq('assessment_id', assessmentId)
+      .in('student_id', studentIds)
+
+    const existingTokenMap: Record<string, string> = {}
+    existingTokens?.forEach((t: any) => { existingTokenMap[t.student_id] = t.token })
+
+    const studentsWithoutTokens = classStudents.filter((s: any) => !existingTokenMap[s.id])
+    if (studentsWithoutTokens.length > 0) {
+      const newTokenRows = studentsWithoutTokens.map((student: any) => ({
+        assessment_id: assessmentId,
+        student_id: student.id,
+        user_id: userId,
+        token: generateUniqueToken(),
+        qr_code_data: {
+          assessment_name: assessment.nome_avaliacao || assessment.tipo_avaliacao || 'Avaliação',
+          class_name: classItem.name,
+          class_id: classItem.id,
+          generated_at: new Date().toISOString()
+        }
+      }))
+
+      const { data: insertedTokens } = await supabase
+        .from('assessment_tokens')
+        .insert(newTokenRows)
+        .select('token, student_id')
+
+      insertedTokens?.forEach((t: any) => { existingTokenMap[t.student_id] = t.token })
+      newTokenRows.forEach((row: any) => {
+        if (!existingTokenMap[row.student_id]) {
+          existingTokenMap[row.student_id] = row.token
+        }
+      })
+    }
+
+    const items = (assessment.selected_items || assessment.selectedItems || selectedItemsForAssessment || []).map((item: any) => ({
+      ...item,
+      tipoItem: item.tipo_item || item.tipoItem,
+      textoItem: item.texto_item || item.textoItem,
+      etapaEnsino: item.etapa_ensino || item.etapaEnsino,
+      respostaCorreta: item.resposta_correta || item.respostaCorreta,
+      quantidadeLinhas: item.quantidade_linhas || item.quantidadeLinhas,
+      afirmativasExtras: item.afirmativas_extras || item.afirmativasExtras,
+      gabaritoAfirmativas: item.gabarito_afirmativas || item.gabaritoAfirmativas,
+      gabaritoAfirmativasExtras: item.gabarito_afirmativas_extras || item.gabaritoAfirmativasExtras,
+    }))
+
+    // Preparar payload com cabeçalho (imagem ou padrão) e lista de alunos
+    const students = classStudents.map((student: any) => {
+      const token = existingTokenMap[student.id]
+      return {
+        id: student.id,
+        name: student.name,
+        qrUrl: `${window.location.origin}/s/${encodeURIComponent(token)}`,
+      }
+    })
+
+    const assessmentPayload = {
+      nomeAvaliacao: assessment.nome_avaliacao || assessmentData.nomeAvaliacao || 'Avaliação',
+      nomeEscola: assessment.nome_escola || assessmentData.nomeEscola || '',
+      professor: assessment.professor || assessmentData.professor || '',
+      turma: classItem.name,
+      componenteCurricular: assessment.componente_curricular || assessmentData.componenteCurricular || '',
+      data: assessment.data || assessmentData.data || '',
+      instrucoes: assessment.instrucoes || assessmentData.instrucoes || '',
+      tipoAvaliacao: assessment.tipo_avaliacao || assessmentData.tipoAvaliacao || '',
+      mostrarTipoAvaliacao: assessment.mostrar_tipo_avaliacao ?? assessmentData.mostrarTipoAvaliacao ?? true,
+      useImageAsHeader: assessment.use_image_as_header ?? assessmentData.useImageAsHeader ?? false,
+      headerImage: assessmentData.headerImageBase64 || null,
+      imageWidth: assessment.image_width || assessmentData.imageWidth || 190,
+      imageHeight: assessment.image_height || assessmentData.imageHeight || 40,
+      selectedItems: items,
+      qrCodeSize: 35,
+    }
+
+    const toast = document.createElement('div')
+    toast.className = 'fixed top-4 right-4 bg-blue-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center space-x-3'
+    toast.innerHTML = `<div class="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div><span id="sheet-gen-status">Preparando folhas (0/${classStudents.length})...</span>`
+    document.body.appendChild(toast)
+
+    const updateStatus = (msg: string) => {
+      const el = document.getElementById('sheet-gen-status')
+      if (el) el.textContent = msg
+    }
+
+    // Endpoints em ordem de preferência: localhost primeiro (código atualizado),
+    // depois Railway como fallback
+    const serverEndpoints = [
+      { url: 'http://localhost:3001/api/generate-cover', legacy: false },
+      { url: 'https://avaliaedu-production.up.railway.app/api/generate-cover', legacy: false },
+      { url: 'http://localhost:3001/api/generate-pdf', legacy: true },
+      { url: 'https://avaliaedu-production.up.railway.app/api/generate-pdf', legacy: true },
+    ]
+
+    const fetchSheetForStudent = async (student: any): Promise<{ buffer: ArrayBuffer; legacy: boolean }> => {
+      const payload = {
+        ...assessmentPayload,
+        studentName: student.name,
+        studentToken: student.qrUrl,
+        studentId: student.id,
+        columns: '1',
+      }
+
+      for (const endpoint of serverEndpoints) {
+        try {
+          const body = payload
+          const response = await fetch(endpoint.url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(120000)
+          })
+          if (response.ok) {
+            return { buffer: await response.arrayBuffer(), legacy: endpoint.legacy }
+          }
+        } catch { /* tenta próximo */ }
+      }
+
+      throw new Error(`Falha ao conectar ao servidor de PDF.`)
+    }
+
+    try {
+      const { PDFDocument } = await import('pdf-lib')
+      const mergedPdf = await PDFDocument.create()
+
+      const CONCURRENCY = 3
+      let completed = 0
+
+      for (let i = 0; i < students.length; i += CONCURRENCY) {
+        const batch = students.slice(i, i + CONCURRENCY)
+        const buffers: { buffer: ArrayBuffer; legacy: boolean }[] = await Promise.all(batch.map(fetchSheetForStudent))
+
+        for (const { buffer, legacy } of buffers) {
+          const doc = await PDFDocument.load(buffer)
+          // No modo legado o servidor retorna capa + questões; pegar só a pág. 0 (folha de resposta)
+          const indices = legacy ? [0] : doc.getPageIndices()
+          const pages = await mergedPdf.copyPages(doc, indices)
+          pages.forEach(p => mergedPdf.addPage(p))
+        }
+
+        completed += batch.length
+        updateStatus(`Gerando folhas (${completed}/${students.length})...`)
+      }
+
+      updateStatus('Finalizando PDF...')
+      const pdfBytes = await mergedPdf.save()
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const turmaName = classItem.name.replace(/[^a-zA-Z0-9\u00C0-\u024F\s]/g, '').replace(/\s+/g, '_')
+      a.download = `folhas_${turmaName}_${new Date().toISOString().split('T')[0]}.pdf`
+      a.style.display = 'none'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(url), 5000)
+
+      document.body.removeChild(toast)
+      alert(`${classStudents.length} folha(s) de resposta gerada(s) em um único arquivo PDF!`)
+    } catch (err: any) {
+      if (document.body.contains(toast)) document.body.removeChild(toast)
+      alert('Erro ao gerar folhas: ' + err.message)
+    }
+  }
+
+  // Gerar folhas individuais usando a avaliação salva mais recentemente
+  const handleGenerateSheetsFromCurrentAssessment = async (classItem: any) => {
+    if (!lastSavedAssessmentId) {
+      alert('Gere o PDF da avaliação primeiro para salvá-la, depois clique em "Imprimir Folhas Individuais".')
+      return
+    }
+    const assessment = {
+      id: lastSavedAssessmentId,
+      nome_avaliacao: assessmentData.nomeAvaliacao,
+      nome_escola: assessmentData.nomeEscola,
+      professor: assessmentData.professor,
+      turma: assessmentData.turma,
+      componente_curricular: assessmentData.componenteCurricular,
+      data: assessmentData.data,
+      instrucoes: assessmentData.instrucoes,
+      tipo_avaliacao: assessmentData.tipoAvaliacao,
+      mostrar_tipo_avaliacao: assessmentData.mostrarTipoAvaliacao,
+      colunas: assessmentData.colunas,
+      layout_paginas: assessmentData.layoutPaginas,
+      use_image_as_header: assessmentData.useImageAsHeader,
+      image_width: assessmentData.imageWidth,
+      image_height: assessmentData.imageHeight,
+      selected_items: selectedItemsForAssessment,
+    }
+    await handleGenerateStudentSheets(assessment, classItem)
+  }
+
+  const handleGenerateSheetsFromSelectedAssessment = async (classItem: any) => {
+    if (!selectedAssessmentForSheets) {
+      alert('Selecione uma avaliação primeiro.')
+      return
+    }
+    await handleGenerateStudentSheets(selectedAssessmentForSheets, classItem)
+  }
+
   // Estados para correção de avaliações
   const [correctionData, setCorrectionData] = useState({
     selectedAssessmentId: null as any,
@@ -264,8 +579,8 @@ export const useDashboard = (userId: string | undefined) => {
 
     // Tentar diferentes URLs do servidor
     const serverUrls = [
-      `https://avaliaedu-production.up.railway.app/api/${endpoint}`,
       `http://localhost:3001/api/${endpoint}`,
+      `https://avaliaedu-production.up.railway.app/api/${endpoint}`,
     ]
     
     let response = null
@@ -371,11 +686,25 @@ export const useDashboard = (userId: string | undefined) => {
     })
   }, [])
 
-  const handleItemSearch = useCallback(() => {
-    console.log("Pesquisando itens com filtros:", itemFilters)
-    setHasSearched((prev: any) => ({ ...prev, items: true }))
+  const handleItemSearch = useCallback(async () => {
+    let items = savedItems
+    if (items.length === 0 && userId) {
+      // dados ainda não chegaram — buscar diretamente
+      const { data } = await supabase
+        .from('items')
+        .select('*')
+        .order('created_at', { ascending: false })
+      items = (data || []).map((item: any) => ({
+        ...item,
+        title: `${item.descritor?.substring(0, 50) || ''}...`,
+        description: `${item.texto_item?.substring(0, 100) || ''}...`,
+        subject: item.disciplina || 'Não especificada'
+      }))
+      setSavedItems(items)
+      setFilteredSavedItems(items.filter((item: any) => item.user_id === userId))
+    }
 
-    let filteredItems = [...savedItems]
+    let filteredItems = [...items]
 
     if (itemFilters.keywords) {
       filteredItems = filteredItems.filter((item: any) =>
@@ -402,8 +731,9 @@ export const useDashboard = (userId: string | undefined) => {
       })
     }
 
+    setHasSearched((prev: any) => ({ ...prev, items: true }))
     setSearchResults((prev: any) => ({ ...prev, items: filteredItems }))
-  }, [itemFilters, savedItems])
+  }, [itemFilters, savedItems, userId])
 
   const handleSearchMyItems = useCallback(() => {
     console.log("Pesquisando meus itens com filtros:", myItemsFilters)
@@ -436,11 +766,20 @@ export const useDashboard = (userId: string | undefined) => {
     setMyItemsCurrentPage(1) // Reset para primeira página ao fazer nova busca
   }, [myItemsFilters, savedItems, userId])
 
-  const handleAssessmentSearch = useCallback(() => {
-    console.log("Pesquisando avaliações com filtros:", assessmentFilters)
-    setHasSearched((prev: any) => ({ ...prev, assessments: true }))
+  const handleAssessmentSearch = useCallback(async () => {
+    let assessments = savedAssessments
+    if (assessments.length === 0 && userId) {
+      // dados ainda não chegaram — buscar diretamente
+      const { data } = await supabase
+        .from('assessments')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+      assessments = data || []
+      setSavedAssessments(assessments)
+    }
 
-    let filteredAssessments = [...savedAssessments]
+    let filteredAssessments = [...assessments]
 
     if (assessmentFilters.keywords) {
       filteredAssessments = filteredAssessments.filter((assessment: any) =>
@@ -479,8 +818,9 @@ export const useDashboard = (userId: string | undefined) => {
       ...assessment
     }))
 
+    setHasSearched((prev: any) => ({ ...prev, assessments: true }))
     setSearchResults((prev: any) => ({ ...prev, assessments: formattedResults }))
-  }, [assessmentFilters, savedAssessments])
+  }, [assessmentFilters, savedAssessments, userId])
 
   const handleAddHeaderImage = useCallback(() => {
     const input = document.createElement("input")
@@ -489,11 +829,17 @@ export const useDashboard = (userId: string | undefined) => {
     input.onchange = (e: any) => {
       const file = e.target.files?.[0]
       if (file) {
-        setAssessmentData((prev: any) => ({
-          ...prev,
-          headerImage: file,
-          useImageAsHeader: true,
-        }))
+        const reader = new FileReader()
+        reader.onload = (ev) => {
+          const base64 = ev.target?.result as string
+          setAssessmentData((prev: any) => ({
+            ...prev,
+            headerImage: file,
+            headerImageBase64: base64,
+            useImageAsHeader: true,
+          }))
+        }
+        reader.readAsDataURL(file)
       }
     }
     input.click()
@@ -868,6 +1214,11 @@ export const useDashboard = (userId: string | undefined) => {
 
           if (assessmentError) throw assessmentError
 
+          // Guardar ID da última avaliação salva para uso nas folhas individuais
+          if (assessmentRecord?.[0]?.id) {
+            setLastSavedAssessmentId(assessmentRecord[0].id.toString())
+          }
+
           // Recarregar avaliações do banco
           await loadAssessments()
         } catch (error) {
@@ -963,8 +1314,8 @@ export const useDashboard = (userId: string | undefined) => {
 
       // Tentar diferentes URLs do servidor
       const serverUrls = [
-        'https://avaliaedu-production.up.railway.app/api/generate-pdf',
         'http://localhost:3001/api/generate-pdf',
+        'https://avaliaedu-production.up.railway.app/api/generate-pdf',
       ]
 
       let response = null
@@ -1485,6 +1836,22 @@ export const useDashboard = (userId: string | undefined) => {
     handleDeleteGrading,
     loadItems,
     loadAssessments,
+    loadClasses,
     handleSearchMyItems,
+    handleGenerateStudentSheets,
+    handleGenerateSheetsFromCurrentAssessment,
+
+    // Turmas para folhas individuais
+    classes,
+    selectedClassForSheets,
+    setSelectedClassForSheets,
+    lastSavedAssessmentId,
+
+    // Seleção de avaliação para imprimir folhas
+    showSheetsAssessmentModal,
+    setShowSheetsAssessmentModal,
+    selectedAssessmentForSheets,
+    setSelectedAssessmentForSheets,
+    handleGenerateSheetsFromSelectedAssessment,
   }
 }

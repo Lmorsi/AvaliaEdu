@@ -229,7 +229,12 @@ const GradingSection: React.FC<GradingSectionProps> = ({ dashboard }) => {
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Selecionar Avaliação *
                       </label>
-                      {dashboard.savedAssessments.length === 0 ? (
+                      {dashboard.isLoadingAssessments ? (
+                        <div className="text-center py-6 bg-gray-50 rounded-lg border border-gray-200">
+                          <div className="animate-spin rounded-full h-6 w-6 border-2 border-green-500 border-t-transparent mx-auto mb-2"></div>
+                          <p className="text-sm text-gray-500">Carregando avaliações...</p>
+                        </div>
+                      ) : dashboard.savedAssessments.length === 0 ? (
                         <div className="text-center py-6 bg-gray-50 rounded-lg border border-gray-200">
                           <i className="fas fa-file-alt text-3xl mb-3 text-gray-300"></i>
                           <p className="text-sm text-gray-500">Nenhuma avaliação criada</p>
@@ -322,35 +327,20 @@ const GradingSection: React.FC<GradingSectionProps> = ({ dashboard }) => {
 
                 {dashboard.selectedAssessmentForGrading && dashboard.gradingData.totalQuestions > 0 && (
                   <div className="flex flex-col gap-3">
-                    {/* Bloco de impressão individual + escaneamento */}
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
-                      <div className="flex items-start gap-2">
-                        <i className="fas fa-info-circle text-blue-500 mt-0.5 text-sm flex-shrink-0"></i>
-                        <p className="text-xs text-blue-700">
-                          <strong>Fluxo com QR code:</strong> imprima as folhas individuais (cada aluno recebe seu QR code único), depois use "Escanear Cartão" para identificar automaticamente o aluno na correção.
-                        </p>
-                      </div>
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <button
-                          onClick={() => dashboard.handleGenerateStudentSheets(
-                            dashboard.selectedAssessmentForGrading,
-                            dashboard.selectedClassForGrading
-                          )}
-                          disabled={dashboard.students.length === 0}
-                          className="flex-1 bg-blue-600 text-white py-2.5 px-4 rounded-md hover:bg-blue-700 transition-colors text-sm font-medium disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                        >
-                          <i className="fas fa-print text-sm"></i>
-                          Imprimir Folhas Individuais
-                        </button>
-                        <button
-                          onClick={() => navigate('/scan')}
-                          className="flex-1 bg-gray-700 text-white py-2.5 px-4 rounded-md hover:bg-gray-800 transition-colors text-sm font-medium flex items-center justify-center gap-2"
-                        >
-                          <i className="fas fa-qrcode text-sm"></i>
-                          Escanear Cartão
-                        </button>
-                      </div>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+                      <i className="fas fa-info-circle text-blue-500 mt-0.5 text-sm flex-shrink-0"></i>
+                      <p className="text-xs text-blue-700">
+                        Use "Escanear Cartão" para identificar o aluno automaticamente pelo QR code impresso na folha individual. Gere as folhas individuais em "+ Nova Avaliação".
+                      </p>
                     </div>
+
+                    <button
+                      onClick={() => navigate('/scan')}
+                      className="w-full bg-gray-700 text-white py-2.5 px-4 rounded-md hover:bg-gray-800 transition-colors text-sm font-medium flex items-center justify-center gap-2"
+                    >
+                      <i className="fas fa-qrcode text-sm"></i>
+                      Escanear Cartão
+                    </button>
 
                     <button
                       onClick={dashboard.handleStartGrading}
