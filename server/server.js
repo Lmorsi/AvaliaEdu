@@ -343,7 +343,7 @@ const generateQuestionsHTML = (finalData, columns, quillCSS) => {
     ${quillCSS}
     @page {
       size: A4;
-      margin: 17mm 8mm 5mm 8mm;
+      margin: 8mm 8mm 5mm 8mm;
     }
 
     body {
@@ -515,13 +515,122 @@ const generateQuestionsHTML = (finalData, columns, quillCSS) => {
   `;
 };
 
+// NOVA FUNÇÃO: Gera HTML de uma folha de resposta individual (com cabeçalho)
+const generateSingleSheetHTML = async (finalData, quillCSS) => {
+  const sheetCSS = `
+    ${quillCSS}
+    @page { size: A4; margin: 7.5mm; }
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+    .header-standard { border: 1px solid #000; margin-bottom: 4mm; }
+    .header-row { display: flex; border-bottom: 1px solid #000; min-height: 6mm; align-items: center; }
+    .header-row:last-child { border-bottom: none; }
+    .header-cell { padding: 2px 8px; font-size: 14px; display: flex; align-items: center; }
+    .header-cell-full { flex: 1; }
+    .header-cell-split { flex: 1; border-right: 1px solid #000; }
+    .header-cell-date { flex: 0 0 auto; min-width: 120px; padding-left: 8px; }
+  `;
+
+  const answerSheetHTML = await generateAnswerSheet(finalData);
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="UTF-8"><style>${sheetCSS}</style></head>
+    <body>
+      ${generatePageHeader(finalData)}
+      <div style="font-weight: bold; margin: 4mm 0; font-size: 14px;">FOLHA DE RESPOSTAS:</div>
+      ${answerSheetHTML}
+    </body>
+    </html>
+  `;
+};
+
+// --- ENDPOINT: GERAR PDF ÚNICO COM TODAS AS FOLHAS DE RESPOSTA ---
+app.post('/api/generate-student-sheets', async (req, res) => {
+  let browser = null;
+  try {
+    const { students, assessmentData: aData } = req.body;
+
+    if (!students || students.length === 0) {
+      return res.status(400).json({ error: 'Nenhum aluno fornecido.' });
+    }
+
+    const puppeteerOptions = {
+      headless: 'new',
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN || '/usr/bin/google-chrome-stable' || undefined,
+      args: [
+        '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas', '--no-first-run', '--no-zygote',
+        '--disable-gpu', '--disable-web-security', '--disable-features=VizDisplayCompositor',
+        '--memory-pressure-off', '--max_old_space_size=4096',
+      ],
+      timeout: 300000,
+      protocolTimeout: 300000,
+    };
+
+    browser = await puppeteer.launch(puppeteerOptions);
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    let quillCSS = '';
+    try {
+      quillCSS = fs.readFileSync(require.resolve('react-quill/dist/quill.snow.css'), 'utf8');
+    } catch {
+      quillCSS = `.ql-editor { font-family: inherit; font-size: inherit; line-height: inherit; }`;
+    }
+
+    const finalPdfDoc = await PDFDocument.create();
+
+    for (const student of students) {
+      const sheetData = {
+        ...aData,
+        studentName: student.name,
+        studentToken: student.qrUrl,
+        studentId: student.id,
+      };
+
+      const sheetHTML = await generateSingleSheetHTML(sheetData, quillCSS);
+
+      const page = await browser.newPage();
+      await new Promise(resolve => setTimeout(resolve, 500));
+      page.setDefaultTimeout(120000);
+      await page.setViewport({ width: 1200, height: 800 });
+      await page.setContent(sheetHTML, { waitUntil: 'load', timeout: 120000 });
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      const pdfBuffer = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        margin: { top: '7.5mm', right: '7.5mm', bottom: '7.5mm', left: '7.5mm' },
+        timeout: 120000,
+      });
+      await page.close();
+
+      const sheetDoc = await PDFDocument.load(pdfBuffer);
+      const pages = await finalPdfDoc.copyPages(sheetDoc, sheetDoc.getPageIndices());
+      pages.forEach(p => finalPdfDoc.addPage(p));
+    }
+
+    const finalPdfBytes = await finalPdfDoc.save();
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="folhas_de_resposta.pdf"');
+    res.send(Buffer.from(finalPdfBytes));
+
+  } catch (error) {
+    console.error('❌ Erro ao gerar folhas:', error);
+    res.status(500).json({ error: 'Erro interno ao gerar folhas', details: error.message });
+  } finally {
+    if (browser) {
+      try { if (browser.isConnected()) await browser.close(); } catch {}
+    }
+  }
+});
+
 // --- FUNÇÃO PRINCIPAL ULTRA ROBUSTA PARA SESSION CLOSED ---
 
 const handlePdfRequest = async (req, res, disposition) => {
   let browser = null;
-  let coverPage = null;
   let questionsPage = null;
-  
+
   try {
     const { columns, ...finalData } = req.body;
 
@@ -646,105 +755,7 @@ const handlePdfRequest = async (req, res, disposition) => {
       `;
     }
 
-    // --- ETAPA 1: GERAR PDF DA CAPA COM PROTEÇÕES ULTRA ROBUSTAS ---
-    console.log('📄 Criando página para a CAPA...');
-    
-    // Verificar browser antes de criar página
-    if (!browser.isConnected()) {
-      throw new Error('Browser desconectado antes de criar página da capa');
-    }
-    
-    coverPage = await browser.newPage();
-    
-    // AGUARDAR a página estar completamente inicializada
-    console.log('⏳ Aguardando página da capa estar pronta...');
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Verificar se a página foi criada corretamente
-    if (!coverPage || coverPage.isClosed()) {
-      throw new Error('Falha ao criar página da capa');
-    }
-    
-    // Configurações de timeout MUITO mais generosas
-    coverPage.setDefaultTimeout(300000); // 5 minutos
-    coverPage.setDefaultNavigationTimeout(300000); // 5 minutos
-    
-    // Configurar viewport
-    console.log('🖥️ Configurando viewport da capa...');
-    await coverPage.setViewport({ width: 1200, height: 800 });
-
-    // Gerar HTML da capa
-    console.log('📝 Gerando HTML da capa...');
-    const coverHtml = await generateCoverHTML(finalData, quillCSS);
-    
-    // Verificar se a página ainda está ativa antes de setContent
-    if (!coverPage || coverPage.isClosed()) {
-      throw new Error('Página da capa foi fechada antes de definir conteúdo');
-    }
-    
-    // MÉTODO ULTRA SEGURO: Usar setContent com retry
-    console.log('📝 Definindo conteúdo HTML da capa...');
-    let coverContentSet = false;
-    let contentRetries = 0;
-    const maxContentRetries = 3;
-    
-    while (!coverContentSet && contentRetries < maxContentRetries) {
-      try {
-        await coverPage.setContent(coverHtml, { 
-          waitUntil: 'load',
-          timeout: 180000 // 3 minutos
-        });
-        coverContentSet = true;
-        console.log('✅ Conteúdo HTML da capa definido com sucesso');
-      } catch (setContentError) {
-        contentRetries++;
-        console.warn(`⚠️ Tentativa ${contentRetries}/${maxContentRetries} de definir conteúdo da capa falhou:`, setContentError.message);
-        
-        if (contentRetries === maxContentRetries) {
-          throw new Error(`Falha ao definir conteúdo HTML da capa após ${maxContentRetries} tentativas: ${setContentError.message}`);
-        }
-        
-        // Aguardar antes da próxima tentativa
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Verificar se página ainda está ativa
-        if (!coverPage || coverPage.isClosed()) {
-          throw new Error('Página da capa foi fechada durante retry de setContent');
-        }
-      }
-    }
-    
-    // Aguardar renderização completa
-    console.log('⏳ Aguardando renderização completa da capa...');
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    
-    // Verificar novamente se a página ainda está ativa
-    if (!coverPage || coverPage.isClosed()) {
-      throw new Error('Página da capa foi fechada durante renderização');
-    }
-    
-    // Verificar se browser ainda está conectado
-    if (!browser.isConnected()) {
-      throw new Error('Browser desconectado durante renderização da capa');
-    }
-    
-    let coverPdfBuffer;
-    try {
-      console.log('🖨️ Gerando PDF da capa...');
-      coverPdfBuffer = await coverPage.pdf({
-        format: 'A4',
-        printBackground: true,
-        margin: { top: '7.5mm', right: '7.5mm', bottom: '7.5mm', left: '7.5mm' },
-        timeout: 180000, // 3 minutos
-        preferCSSPageSize: true
-      });
-      console.log('✅ PDF da capa gerado com sucesso');
-    } catch (pdfError) {
-      console.error('❌ Erro ao gerar PDF da capa:', pdfError);
-      throw new Error(`Falha na geração do PDF da capa: ${pdfError.message}`);
-    }
-
-    // --- ETAPA 2: GERAR PDF DAS QUESTÕES COM PROTEÇÕES ULTRA ROBUSTAS ---
+    // --- GERAR PDF DAS QUESTÕES ---
     console.log('📝 Criando página para as QUESTÕES...');
     
     // Verificar browser antes de criar segunda página
@@ -837,15 +848,9 @@ const handlePdfRequest = async (req, res, disposition) => {
       questionsPdfBuffer = await questionsPage.pdf({
         format: 'A4',
         printBackground: true,
-        displayHeaderFooter: true,
-        headerTemplate: `
-          <div style="width: 100%; text-align: center; font-size: 10px; font-family: Arial, sans-serif; font-weight: bold; border-bottom: 1px solid #333; padding: 6px 0; margin: 0 20px;">
-            ${nomeAvaliacaoHeader}
-          </div>
-        `,
-        footerTemplate: '<div></div>',
+        displayHeaderFooter: false,
         margin: {
-          top: '25mm',
+          top: '7.5mm',
           right: '7.5mm',
           bottom: '7.5mm',
           left: '7.5mm'
@@ -859,33 +864,11 @@ const handlePdfRequest = async (req, res, disposition) => {
       throw new Error(`Falha na geração do PDF das questões: ${pdfError.message}`);
     }
 
-    // --- ETAPA 3: UNIR OS PDFs ---
-    console.log('🔗 Unindo os PDFs...');
-    const finalPdfDoc = await PDFDocument.create();
-    
-    // Adiciona páginas da capa
-    const coverDoc = await PDFDocument.load(coverPdfBuffer);
-    const coverPages = await finalPdfDoc.copyPages(coverDoc, coverDoc.getPageIndices());
-    coverPages.forEach(p => finalPdfDoc.addPage(p));
-
-    // Adiciona página em branco, se necessário (layout de 3 páginas)
-    if (finalData.layoutPaginas === "pagina3") {
-      console.log('📄 Adicionando página em branco...');
-      finalPdfDoc.addPage();
-    }
-
-    // Adiciona páginas das questões
-    const questionsDoc = await PDFDocument.load(questionsPdfBuffer);
-    const questionsPages = await finalPdfDoc.copyPages(questionsDoc, questionsDoc.getPageIndices());
-    questionsPages.forEach(p => finalPdfDoc.addPage(p));
-
-    const finalPdfBytes = await finalPdfDoc.save();
-
-    // --- ETAPA 4: ENVIAR RESPOSTA ---
-    console.log('✅ PDF final gerado com sucesso!');
+    // --- ENVIAR RESPOSTA ---
+    console.log('✅ PDF das questões gerado com sucesso!');
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `${disposition}; filename="avaliacao.pdf"`);
-    res.send(Buffer.from(finalPdfBytes));
+    res.send(Buffer.from(questionsPdfBuffer));
 
   } catch (error) {
     console.error('❌ Erro fatal durante a geração do PDF:', error);
@@ -908,52 +891,13 @@ const handlePdfRequest = async (req, res, disposition) => {
       timestamp: new Date().toISOString()
     });
   } finally {
-    // Cleanup ULTRA robusto
-    console.log('🧹 Iniciando cleanup ultra robusto...');
-    
-    // Fechar página da capa
-    if (coverPage) {
-      try {
-        if (!coverPage.isClosed()) {
-          console.log('📄 Fechando página da capa...');
-          await coverPage.close();
-        }
-      } catch (pageCloseError) {
-        console.warn('⚠️ Erro ao fechar página da capa (ignorado):', pageCloseError.message);
-      }
-    }
-    
-    // Fechar página das questões
     if (questionsPage) {
-      try {
-        if (!questionsPage.isClosed()) {
-          console.log('📄 Fechando página das questões...');
-          await questionsPage.close();
-        }
-      } catch (pageCloseError) {
-        console.warn('⚠️ Erro ao fechar página das questões (ignorado):', pageCloseError.message);
-      }
+      try { if (!questionsPage.isClosed()) await questionsPage.close(); } catch {}
     }
-    
-    // Fechar browser
     if (browser) {
-      try {
-        if (browser.isConnected()) {
-          console.log('🚪 Fechando o navegador...');
-          await browser.close();
-        }
-      } catch (browserCloseError) {
-        console.warn('⚠️ Erro ao fechar navegador (ignorado):', browserCloseError.message);
-      }
+      try { if (browser.isConnected()) await browser.close(); } catch {}
     }
-    
-    // Forçar garbage collection se disponível
-    if (global.gc) {
-      console.log('🗑️ Executando garbage collection...');
-      global.gc();
-    }
-    
-    console.log('✅ Cleanup concluído');
+    if (global.gc) global.gc();
   }
 };
 
@@ -964,6 +908,65 @@ app.post('/api/generate-pdf', (req, res) => handlePdfRequest(req, res, 'attachme
 
 // Endpoint de preview que chama a função central
 app.post('/api/preview-pdf', (req, res) => handlePdfRequest(req, res, 'inline'));
+
+// Endpoint para gerar apenas a folha de resposta de um aluno (sem questões)
+app.post('/api/generate-cover', async (req, res) => {
+  let browser = null;
+  let page = null;
+  try {
+    const finalData = req.body;
+
+    const puppeteerOptions = {
+      headless: 'new',
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN || '/usr/bin/google-chrome-stable' || undefined,
+      args: [
+        '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas', '--no-first-run', '--no-zygote',
+        '--disable-gpu', '--disable-web-security', '--disable-features=VizDisplayCompositor',
+        '--memory-pressure-off', '--max_old_space_size=4096',
+      ],
+      timeout: 120000,
+      protocolTimeout: 120000,
+    };
+
+    browser = await puppeteer.launch(puppeteerOptions);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    let quillCSS = '';
+    try {
+      quillCSS = fs.readFileSync(require.resolve('react-quill/dist/quill.snow.css'), 'utf8');
+    } catch {
+      quillCSS = `.ql-editor { font-family: inherit; font-size: inherit; line-height: inherit; }`;
+    }
+
+    const html = await generateSingleSheetHTML(finalData, quillCSS);
+
+    page = await browser.newPage();
+    await new Promise(resolve => setTimeout(resolve, 500));
+    page.setDefaultTimeout(120000);
+    await page.setViewport({ width: 1200, height: 800 });
+    await page.setContent(html, { waitUntil: 'load', timeout: 120000 });
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '7.5mm', right: '7.5mm', bottom: '7.5mm', left: '7.5mm' },
+      timeout: 120000,
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="folha.pdf"');
+    res.send(Buffer.from(pdfBuffer));
+
+  } catch (error) {
+    console.error('❌ Erro ao gerar folha individual:', error);
+    res.status(500).json({ error: 'Erro interno ao gerar folha', details: error.message });
+  } finally {
+    if (page) { try { if (!page.isClosed()) await page.close(); } catch {} }
+    if (browser) { try { if (browser.isConnected()) await browser.close(); } catch {} }
+  }
+});
 
 // Middleware de tratamento de erros
 app.use((err, req, res, next) => {
