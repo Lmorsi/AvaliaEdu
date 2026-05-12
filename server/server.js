@@ -472,6 +472,13 @@ const generateQuestionsHTML = (finalData, columns, quillCSS) => {
     return questionHTML;
   };
 
+  const titleHTML = nomeAvaliacao ? `
+    <div style="text-align: center; font-family: Arial, sans-serif; font-size: 14px; font-weight: bold; margin-bottom: 3mm; letter-spacing: 0.5px;">
+      ${nomeAvaliacao}
+    </div>
+    <div style="border-bottom: 1.5px solid #000; margin-bottom: 4mm;"></div>
+  ` : '';
+
   // Se for uma coluna, gerar normalmente
   if (columns !== '2') {
     const allQuestionsHTML = selectedItems.map((item, index) => {
@@ -486,6 +493,7 @@ const generateQuestionsHTML = (finalData, columns, quillCSS) => {
         <style>${questionsCSS}</style>
       </head>
       <body>
+        ${titleHTML}
         <div class="questions-container single-column">
           ${allQuestionsHTML}
         </div>
@@ -507,6 +515,7 @@ const generateQuestionsHTML = (finalData, columns, quillCSS) => {
       <style>${questionsCSS}</style>
     </head>
     <body>
+      ${titleHTML}
       <div class="questions-container two-column">
         ${allQuestionsHTML}
       </div>

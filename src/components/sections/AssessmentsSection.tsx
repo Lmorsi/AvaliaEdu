@@ -191,7 +191,7 @@ const AssessmentsSection: React.FC<AssessmentsSectionProps> = ({ dashboard }) =>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Nome da Avaliação *
-                <span className="text-xs text-gray-500 ml-2">(aparecerá no topo das páginas com questões)</span>
+                <span className="text-xs text-gray-500 ml-2">(aparecerá no topo do PDF, acima dos itens)</span>
               </label>
               <input
                 type="text"
