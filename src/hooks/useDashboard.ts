@@ -595,9 +595,9 @@ export const useDashboard = (userId: string | undefined) => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(finalData),
-          signal: AbortSignal.timeout(30000)
+          signal: AbortSignal.timeout(300000)
         })
-        
+
         if (response.ok) {
           console.log(`Conectado com sucesso: ${url}`)
           break
@@ -1330,7 +1330,7 @@ export const useDashboard = (userId: string | undefined) => {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify(assessmentDataToSend),
-            signal: AbortSignal.timeout(30000)
+            signal: AbortSignal.timeout(300000)
           })
 
           if (response.ok) {

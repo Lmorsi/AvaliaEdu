@@ -792,6 +792,7 @@ const handlePdfRequest = async (req, res, disposition) => {
     }
     
     // MÉTODO ULTRA SEGURO: Usar setContent com retry
+    const maxContentRetries = 3;
     console.log('📝 Definindo conteúdo HTML das questões...');
     let questionsContentSet = false;
     let questionsContentRetries = 0;
