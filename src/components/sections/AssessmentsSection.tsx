@@ -289,7 +289,7 @@ const AssessmentsSection: React.FC<AssessmentsSectionProps> = ({ dashboard }) =>
                       📎 {dashboard.assessmentData.headerImage.name}
                     </span>
                     <button
-                      onClick={() => dashboard.handleAssessmentDataChange("headerImage", null)}
+                      onClick={() => dashboard.removeHeaderImage()}
                       className="text-red-600 hover:text-red-700 text-sm flex-shrink-0"
                     >
                       Remover

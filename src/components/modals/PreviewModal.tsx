@@ -261,7 +261,7 @@ const AssessmentsSection: React.FC<AssessmentsSectionProps> = ({ state, handlers
                       📎 {state.assessmentData.headerImage.name}
                     </span>
                     <button
-                      onClick={() => handlers.handleAssessmentDataChange("headerImage", null)}
+                      onClick={() => handlers.removeHeaderImage()}
                       className="text-red-600 hover:text-red-700 text-sm flex-shrink-0"
                     >
                       Remover

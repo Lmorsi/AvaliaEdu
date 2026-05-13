@@ -845,6 +845,15 @@ export const useDashboard = (userId: string | undefined) => {
     input.click()
   }, [])
 
+  const removeHeaderImage = useCallback(() => {
+    setAssessmentData((prev: any) => ({
+      ...prev,
+      headerImage: null,
+      headerImageBase64: null,
+      useImageAsHeader: false,
+    }))
+  }, [])
+
   const addAlternative = useCallback(() => {
     if (newItemData.tipoItem === "multipla_escolha" && newItemData.alternativas.length < 10) {
       setNewItemData((prev: any) => ({
@@ -1795,6 +1804,7 @@ export const useDashboard = (userId: string | undefined) => {
     handleItemSearch,
     handleAssessmentSearch,
     handleAddHeaderImage,
+    removeHeaderImage,
     addAlternative,
     removeAlternative,
     handleAlternativeChange,
