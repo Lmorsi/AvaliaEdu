@@ -43,7 +43,6 @@ export const useDashboard = (userId: string | undefined) => {
 
   const [assessmentData, setAssessmentData] = useState({
     professor: "",
-    turma: "",
     data: "",
     instrucoes: "",
     headerImage: null,
@@ -57,14 +56,12 @@ export const useDashboard = (userId: string | undefined) => {
     nomeEscola: "",
     componenteCurricular: "",
     colunas: "1",
-    layoutPaginas: "pagina2", // "pagina2" ou "pagina3"
     nomeAvaliacao: "", // Novo campo para nome personalizado da avaliação
   })
 
   // Estados para preview com edição direta
   const [previewData, setPreviewData] = useState({
     professor: "",
-    turma: "",
     data: "",
     instrucoes: "",
     nomeEscola: "",
@@ -508,14 +505,12 @@ export const useDashboard = (userId: string | undefined) => {
       nome_avaliacao: assessmentData.nomeAvaliacao,
       nome_escola: assessmentData.nomeEscola,
       professor: assessmentData.professor,
-      turma: assessmentData.turma,
       componente_curricular: assessmentData.componenteCurricular,
       data: assessmentData.data,
       instrucoes: assessmentData.instrucoes,
       tipo_avaliacao: assessmentData.tipoAvaliacao,
       mostrar_tipo_avaliacao: assessmentData.mostrarTipoAvaliacao,
       colunas: assessmentData.colunas,
-      layout_paginas: assessmentData.layoutPaginas,
       use_image_as_header: assessmentData.useImageAsHeader,
       image_width: assessmentData.imageWidth,
       image_height: assessmentData.imageHeight,
@@ -1143,7 +1138,6 @@ export const useDashboard = (userId: string | undefined) => {
   const handlePreview = useCallback(() => {
     setPreviewData({
       professor: assessmentData.professor,
-      turma: assessmentData.turma,
       data: assessmentData.data,
       instrucoes: assessmentData.instrucoes,
       nomeEscola: assessmentData.nomeEscola,
@@ -1181,7 +1175,7 @@ export const useDashboard = (userId: string | undefined) => {
       const tipoAvaliacao = assessmentData.mostrarTipoAvaliacao && assessmentData.tipoAvaliacao 
         ? assessmentData.tipoAvaliacao.toLowerCase().replace(/\s+/g, '_') 
         : 'avaliacao'
-      const fileName = `${tipoAvaliacao}_${assessmentData.turma || 'nova'}_${columns}col_${new Date().toISOString().split('T')[0]}.pdf`
+      const fileName = `${tipoAvaliacao}_${columns}col_${new Date().toISOString().split('T')[0]}.pdf`
       
       a.download = fileName
       document.body.appendChild(a)
@@ -1201,7 +1195,6 @@ export const useDashboard = (userId: string | undefined) => {
               user_id: userId,
               nome_avaliacao: assessmentData.nomeAvaliacao,
               professor: assessmentData.professor,
-              turma: assessmentData.turma,
               data: assessmentData.data,
               instrucoes: assessmentData.instrucoes,
               header_image_url: '',
@@ -1215,7 +1208,6 @@ export const useDashboard = (userId: string | undefined) => {
               nome_escola: assessmentData.nomeEscola,
               componente_curricular: assessmentData.componenteCurricular,
               colunas: columns,
-              layout_paginas: assessmentData.layoutPaginas,
               selected_items: selectedItemsForAssessment,
               data_criacao: new Date().toISOString()
             }])
@@ -1294,7 +1286,6 @@ export const useDashboard = (userId: string | undefined) => {
         tipoAvaliacao: assessment.tipoAvaliacao || assessment.tipo_avaliacao,
         mostrarTipoAvaliacao: assessment.mostrarTipoAvaliacao || assessment.mostrar_tipo_avaliacao,
         colunas: assessment.colunas || '1',
-        layoutPaginas: assessment.layoutPaginas || assessment.layout_paginas || 'pagina2',
         headerImage: null,
         useImageAsHeader: assessment.useImageAsHeader || assessment.use_image_as_header,
         imageWidth: assessment.imageWidth || assessment.image_width || 190,
