@@ -210,19 +210,6 @@ const generatePageHeader = (finalData) => {
              alt="Cabeçalho">
       </div>
 
-      ${finalData.studentName ? `
-        <div class="header-standard" style="margin-bottom: 3mm;">
-          <div class="header-row">
-            <div class="header-cell header-cell-split">
-              <strong>ESTUDANTE: </strong><span>${finalData.studentName}</span>
-            </div>
-            <div class="header-cell header-cell-date">
-              <strong>TURMA: </strong><span>${finalData.turma || ''}</span>
-            </div>
-          </div>
-        </div>
-      ` : ''}
-
       ${finalData.mostrarTipoAvaliacao && finalData.tipoAvaliacao ? `
         <div style="text-align: center; font-weight: bold; font-size: 14px; margin: 4mm 0;">
           ${finalData.tipoAvaliacao.toUpperCase()}
@@ -526,10 +513,12 @@ const generateQuestionsHTML = (finalData, columns, quillCSS) => {
 
 // NOVA FUNÇÃO: Gera HTML de uma folha de resposta individual (com cabeçalho)
 const generateSingleSheetHTML = async (finalData, quillCSS) => {
+  const hasImage = !!finalData.headerImage;
+
   const sheetCSS = `
     ${quillCSS}
     @page { size: A4; margin: 7.5mm; }
-    body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; ${hasImage ? 'position: relative;' : ''} }
     .header-standard { border: 1px solid #000; margin-bottom: 4mm; }
     .header-row { display: flex; border-bottom: 1px solid #000; min-height: 6mm; align-items: center; }
     .header-row:last-child { border-bottom: none; }
@@ -537,9 +526,30 @@ const generateSingleSheetHTML = async (finalData, quillCSS) => {
     .header-cell-full { flex: 1; }
     .header-cell-split { flex: 1; border-right: 1px solid #000; }
     .header-cell-date { flex: 0 0 auto; min-width: 120px; padding-left: 8px; }
+    ${hasImage ? `
+    .student-footer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+      font-weight: bold;
+      padding: 2mm 0 1mm 0;
+      margin: 0;
+      border-top: 1px solid #ccc;
+      background: #fff;
+    }
+    ` : ''}
   `;
 
   const answerSheetHTML = await generateAnswerSheet(finalData);
+
+  const studentFooter = hasImage && finalData.studentName ? `
+    <div class="student-footer">
+      ${finalData.studentName}${finalData.turma ? ` &nbsp;|&nbsp; Turma: ${finalData.turma}` : ''}
+    </div>
+  ` : '';
 
   return `
     <!DOCTYPE html>
@@ -549,6 +559,7 @@ const generateSingleSheetHTML = async (finalData, quillCSS) => {
       ${generatePageHeader(finalData)}
       <div style="font-weight: bold; margin: 4mm 0; font-size: 14px;">FOLHA DE RESPOSTAS:</div>
       ${answerSheetHTML}
+      ${studentFooter}
     </body>
     </html>
   `;
