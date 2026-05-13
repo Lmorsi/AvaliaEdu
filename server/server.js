@@ -228,30 +228,30 @@ const generatePageHeader = (finalData) => {
       <div class="header-standard">
         <div class="header-row">
           <div class="header-cell header-cell-full">
-            <strong>NOME DA ESCOLA: </strong><span>${finalData.nomeEscola || ''}</span>
+            <strong>NOME DA ESCOLA:&nbsp;</strong><span>${finalData.nomeEscola || ''}</span>
           </div>
         </div>
         <div class="header-row">
           <div class="header-cell header-cell-full">
-            <strong>COMPONENTE CURRICULAR: </strong><span>${finalData.componenteCurricular || ''}</span>
+            <strong>COMPONENTE CURRICULAR:&nbsp;</strong><span>${finalData.componenteCurricular || ''}</span>
           </div>
         </div>
         <div class="header-row">
           <div class="header-cell header-cell-full">
-            <strong>PROFESSOR(A): </strong><span>${finalData.professor || ''}</span>
+            <strong>PROFESSOR(A):&nbsp;</strong><span>${finalData.professor || ''}</span>
           </div>
         </div>
         <div class="header-row">
           <div class="header-cell header-cell-split">
-            <strong>SÉRIE/TURMA: </strong><span>${finalData.turma || ''}</span>
+            <strong>SÉRIE/TURMA:&nbsp;</strong><span>${finalData.turma || ''}</span>
           </div>
           <div class="header-cell header-cell-date">
-            <strong>DATA: </strong><span>${finalData.data ? new Date(finalData.data + 'T00:00:00').toLocaleDateString('pt-BR') : ''}</span>
+            <strong>DATA:&nbsp;</strong><span>${finalData.data ? new Date(finalData.data + 'T00:00:00').toLocaleDateString('pt-BR') : ''}</span>
           </div>
         </div>
         <div class="header-row">
           <div class="header-cell header-cell-full">
-            <strong>ESTUDANTE: </strong><span>${finalData.studentName || ''}</span>
+            <strong>ESTUDANTE:&nbsp;</strong><span>${finalData.studentName || ''}</span>
           </div>
         </div>
       </div>
