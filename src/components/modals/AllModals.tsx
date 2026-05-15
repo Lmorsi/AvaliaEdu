@@ -1925,9 +1925,7 @@ const AllModals: React.FC<AllModalsProps> = ({ dashboard, onNavigateToGrading, o
         onClose={dashboard.closeModal}
         type="assessments"
         results={dashboard.searchResults.assessments}
-        onViewDetails={(assessment) => {
-          console.log('Ver detalhes da avaliação:', assessment)
-        }}
+        onViewDetails={(assessment) => dashboard.handleViewAssessmentDetails(assessment)}
       />
 
       {/* Modal Minhas Avaliações */}
