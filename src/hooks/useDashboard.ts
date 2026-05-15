@@ -808,7 +808,7 @@ export const useDashboard = (userId: string | undefined) => {
     const formattedResults = filteredAssessments.map((assessment: any) => ({
       id: assessment.id,
       title: assessment.nome_avaliacao || assessment.tipo_avaliacao || 'Avaliação sem nome',
-      description: `${assessment.turma || 'Sem turma'} - ${assessment.selectedItems?.length || 0} questões`,
+      description: `${assessment.turma || 'Sem turma'} - ${(assessment.selected_items || assessment.selectedItems || []).length} questões`,
       date: new Date(assessment.created_at).toLocaleDateString('pt-BR'),
       ...assessment
     }))
@@ -1685,6 +1685,21 @@ export const useDashboard = (userId: string | undefined) => {
     closeModal()
   }, [correctionData, closeModal])
 
+  const handleDeleteAssessment = useCallback(async (assessmentId: number) => {
+    if (!confirm('Deseja realmente excluir esta avaliação? Esta ação não pode ser desfeita.')) return
+    try {
+      const { error } = await supabase
+        .from('assessments')
+        .delete()
+        .eq('id', assessmentId)
+      if (error) throw error
+      await loadAssessments()
+    } catch (error: any) {
+      console.error('Erro ao excluir avaliação:', error)
+      alert('Erro ao excluir avaliação. Tente novamente.')
+    }
+  }, [loadAssessments])
+
   const handleViewAssessmentDetails = useCallback((assessment: any) => {
     const items: any[] = assessment.selected_items || assessment.selectedItems || []
     const title = assessment.nome_avaliacao || assessment.nomeAvaliacao || assessment.tipo_avaliacao || assessment.tipoAvaliacao || 'Avaliação'
@@ -1963,6 +1978,7 @@ export const useDashboard = (userId: string | undefined) => {
     handleClearAllAnswers,
     handleSaveCorrection,
     handleDeleteGrading,
+    handleDeleteAssessment,
     handleViewAssessmentDetails,
     loadItems,
     loadAssessments,

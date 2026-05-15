@@ -197,6 +197,14 @@ const AssessmentItem: React.FC<AssessmentItemProps> = ({ assessment, dashboard }
               </>
             )}
           </button>
+          <button
+            onClick={() => dashboard.handleDeleteAssessment(assessment.id)}
+            disabled={isLoadingView || isLoadingDownload}
+            className="px-4 py-2 rounded-md transition-all text-sm whitespace-nowrap flex items-center justify-center min-w-[130px] bg-red-600 hover:bg-red-700 text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
+          >
+            <i className="fas fa-trash mr-2"></i>
+            Excluir
+          </button>
         </div>
       </div>
     </div>
