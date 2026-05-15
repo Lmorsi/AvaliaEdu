@@ -13,6 +13,7 @@ import ResetPasswordPage from './pages/ResetPasswordPage'
 import DashboardPage from './components/DashboardPage'
 import GradingPage from './components/GradingPage'
 import ReportsPage from './components/ReportsPage'
+import ClassesPage from './components/ClassesPage'
 import AdminPage from './pages/AdminPage'
 import TestEmailPage from './pages/TestEmailPage'
 import ScanPage from './pages/ScanPage'
@@ -54,36 +55,58 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return <>{children}</>
 }
 
+type AppView = 'main' | 'grading' | 'reports' | 'classes'
+
 const DashboardRouter: React.FC = () => {
   const location = useLocation()
   const locationState = location.state as { view?: string; token?: string } | null
 
-  const initialView = locationState?.view === 'grading'
+  const initialView: AppView = locationState?.view === 'grading'
     ? 'grading'
     : locationState?.view === 'reports'
       ? 'reports'
-      : 'main'
+      : locationState?.view === 'classes'
+        ? 'classes'
+        : 'main'
 
-  const [currentView, setCurrentView] = React.useState<'main' | 'grading' | 'reports'>(initialView)
+  const [currentView, setCurrentView] = React.useState<AppView>(initialView)
+
+  const nav = {
+    toMain: () => setCurrentView('main'),
+    toGrading: () => setCurrentView('grading'),
+    toReports: () => setCurrentView('reports'),
+    toClasses: () => setCurrentView('classes'),
+  }
 
   return (
     <>
       {currentView === 'main' && (
         <DashboardPage
-          onNavigateToGrading={() => setCurrentView('grading')}
-          onNavigateToReports={() => setCurrentView('reports')}
+          onNavigateToGrading={nav.toGrading}
+          onNavigateToReports={nav.toReports}
+          onNavigateToClasses={nav.toClasses}
         />
       )}
       {currentView === 'grading' && (
         <GradingPage
-          onNavigateToMain={() => setCurrentView('main')}
-          onNavigateToReports={() => setCurrentView('reports')}
+          onNavigateToMain={nav.toMain}
+          onNavigateToReports={nav.toReports}
+          onNavigateToClasses={nav.toClasses}
         />
       )}
       {currentView === 'reports' && (
         <ReportsPage
-          onNavigateToMain={() => setCurrentView('main')}
-          onNavigateToGrading={() => setCurrentView('grading')}
+          onNavigateToMain={nav.toMain}
+          onNavigateToGrading={nav.toGrading}
+          onNavigateToClasses={nav.toClasses}
+        />
+      )}
+      {currentView === 'classes' && (
+        <ClassesPage
+          onNavigateToMain={nav.toMain}
+          onNavigateToGrading={nav.toGrading}
+          onNavigateToReports={nav.toReports}
+          onNavigateToClasses={nav.toClasses}
         />
       )}
     </>
@@ -143,7 +166,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-          {/* Deep link público para QR codes: /s/:token */}
           <Route path="/s/:token" element={<QRLandingPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

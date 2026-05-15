@@ -12,6 +12,7 @@ interface SidebarProps {
   onNavigateToGrading?: () => void
   onNavigateToReports?: () => void
   onNavigateToMain?: () => void
+  onNavigateToClasses?: () => void
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -23,14 +24,14 @@ const Sidebar: React.FC<SidebarProps> = ({
   handleTabChange,
   onNavigateToGrading,
   onNavigateToReports,
-  onNavigateToMain
+  onNavigateToMain,
+  onNavigateToClasses,
 }) => {
   const { isAdmin } = useAuth()
   const navigate = useNavigate()
 
   return (
     <>
-      {/* Sidebar */}
       <aside
         className={`sidebar fixed inset-y-0 left-0 z-40 w-64 md:w-72 shadow-lg transform transition-transform duration-300 ease-in-out ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
         style={{ backgroundColor: "#2c3e50" }}
@@ -53,9 +54,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               <li className="nav-item">
                 <button
                   onClick={() => {
-                    if (onNavigateToMain) {
-                      onNavigateToMain()
-                    }
+                    if (onNavigateToMain) onNavigateToMain()
                     handleTabChange('items', 'search-items')
                     handleTabChange('assessments', 'search-assessments')
                     setSidebarOpen(false)
@@ -70,12 +69,26 @@ const Sidebar: React.FC<SidebarProps> = ({
               <li className="nav-item">
                 <button
                   onClick={() => openModal("meus-itens-submenu-modal")}
-                  className="w-full flex items-center space-x-3 p-2 md:p-3 rounded-lg text-gray-200 transition-colors hover:bg-opacity-30"
+                  className="w-full flex items-center space-x-3 p-2 md:p-3 rounded-lg text-gray-200 transition-colors"
                   onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(52, 73, 94, 0.3)")}
                   onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                 >
                   <i className="fas fa-folder text-white text-sm md:text-base"></i>
                   <span className="text-gray-200 text-sm md:text-base">Meus Itens</span>
+                </button>
+              </li>
+              <li className="nav-item">
+                <button
+                  onClick={() => {
+                    if (onNavigateToClasses) onNavigateToClasses()
+                    setSidebarOpen(false)
+                  }}
+                  className="w-full flex items-center space-x-3 p-2 md:p-3 rounded-lg text-gray-200 transition-colors"
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(52, 73, 94, 0.3)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                >
+                  <i className="fas fa-users text-white text-sm md:text-base"></i>
+                  <span className="text-gray-200 text-sm md:text-base">Gerenciar Turmas</span>
                 </button>
               </li>
               <li className="nav-item">
@@ -92,9 +105,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               <li className="nav-item">
                 <button
                   onClick={() => {
-                    if (onNavigateToReports) {
-                      onNavigateToReports()
-                    }
+                    if (onNavigateToReports) onNavigateToReports()
                     setSidebarOpen(false)
                   }}
                   className="w-full flex items-center space-x-3 p-2 md:p-3 rounded-lg text-gray-200 transition-colors"
@@ -144,9 +155,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               {isAdmin && (
                 <li className="nav-item">
                   <button
-                    onClick={() => {
-                      window.location.href = '/admin'
-                    }}
+                    onClick={() => { window.location.href = '/admin' }}
                     className="w-full flex items-center space-x-3 p-2 md:p-3 rounded-lg text-yellow-200 transition-colors"
                     onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(234, 179, 8, 0.2)")}
                     onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
@@ -182,7 +191,6 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </aside>
 
-      {/* Sidebar Overlay */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 z-30 md:hidden"

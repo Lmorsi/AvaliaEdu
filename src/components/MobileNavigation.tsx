@@ -6,16 +6,21 @@ interface MobileNavigationProps {
   openModal: (modalId: string) => void
   onNavigateToMain: () => void
   onNavigateToReports?: () => void
+  onNavigateToClasses?: () => void
 }
 
-const MobileNavigation: React.FC<MobileNavigationProps> = ({ openModal, onNavigateToMain, onNavigateToReports }) => {
+const MobileNavigation: React.FC<MobileNavigationProps> = ({
+  openModal,
+  onNavigateToMain,
+  onNavigateToReports,
+  onNavigateToClasses,
+}) => {
   const { isAdmin } = useAuth()
   const navigate = useNavigate()
   const [moreOpen, setMoreOpen] = useState(false)
 
   return (
     <>
-      {/* "Mais" drawer */}
       {moreOpen && (
         <>
           <div
@@ -60,7 +65,6 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({ openModal, onNaviga
         </>
       )}
 
-      {/* Bottom navigation bar */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-gray-200 shadow-xl z-30 md:hidden">
         <div className="flex justify-around py-2">
           <button
@@ -76,6 +80,13 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({ openModal, onNaviga
           >
             <i className="fas fa-folder text-xl"></i>
             <span className="text-xs mt-1 font-medium">Itens</span>
+          </button>
+          <button
+            onClick={() => onNavigateToClasses && onNavigateToClasses()}
+            className="flex flex-col items-center p-2 text-gray-600 hover:text-blue-600 transition-colors"
+          >
+            <i className="fas fa-users text-xl"></i>
+            <span className="text-xs mt-1 font-medium">Turmas</span>
           </button>
           <button
             onClick={() => openModal('avaliacoes-submenu-modal')}

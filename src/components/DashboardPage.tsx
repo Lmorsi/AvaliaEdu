@@ -10,9 +10,10 @@ import AllModals from './modals/AllModals'
 interface DashboardPageProps {
   onNavigateToGrading: () => void
   onNavigateToReports: () => void
+  onNavigateToClasses: () => void
 }
 
-function DashboardPage({ onNavigateToGrading, onNavigateToReports }: DashboardPageProps) {
+function DashboardPage({ onNavigateToGrading, onNavigateToReports, onNavigateToClasses }: DashboardPageProps) {
   const { user, logout, updateUserName } = useAuth()
   const dashboard = useDashboard(user?.id)
 
@@ -33,12 +34,14 @@ function DashboardPage({ onNavigateToGrading, onNavigateToReports }: DashboardPa
           onNavigateToGrading={onNavigateToGrading}
           onNavigateToReports={onNavigateToReports}
           onNavigateToMain={() => {}}
+          onNavigateToClasses={onNavigateToClasses}
         />
 
         <MobileNavigation
           openModal={dashboard.openModal}
           onNavigateToMain={() => {}}
           onNavigateToReports={onNavigateToReports}
+          onNavigateToClasses={onNavigateToClasses}
         />
 
         {/* Main Content */}

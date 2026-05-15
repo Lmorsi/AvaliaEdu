@@ -10,9 +10,10 @@ import { useGrading } from '../hooks/useGrading'
 interface ReportsPageProps {
   onNavigateToMain: () => void
   onNavigateToGrading: () => void
+  onNavigateToClasses: () => void
 }
 
-const ReportsPage: React.FC<ReportsPageProps> = ({ onNavigateToMain, onNavigateToGrading }) => {
+const ReportsPage: React.FC<ReportsPageProps> = ({ onNavigateToMain, onNavigateToGrading, onNavigateToClasses }) => {
   const { user, logout, updateUserName } = useAuth()
   const dashboard = useDashboard(user?.id)
   const grading = useGrading(user?.id, dashboard.savedAssessments)
@@ -28,6 +29,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ onNavigateToMain, onNavigateT
         handleTabChange={dashboard.handleTabChange}
         onNavigateToMain={onNavigateToMain}
         onNavigateToGrading={onNavigateToGrading}
+        onNavigateToClasses={onNavigateToClasses}
       />
 
       <main className="flex-1 overflow-y-auto md:ml-64 lg:ml-72">
@@ -41,6 +43,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ onNavigateToMain, onNavigateT
       <MobileNavigation
         openModal={dashboard.openModal}
         onNavigateToMain={onNavigateToMain}
+        onNavigateToReports={() => {}}
+        onNavigateToClasses={onNavigateToClasses}
       />
 
       <AllModals
