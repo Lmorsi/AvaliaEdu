@@ -69,7 +69,7 @@ const ScanPage: React.FC = () => {
   const lookupByToken = useCallback(async (token: string): Promise<boolean> => {
     const { data: tokenRow, error: tokenErr } = await supabase
       .from('assessment_tokens')
-      .select('*, grading_students(name), assessments(nome_avaliacao, tipo_avaliacao), classes(name)')
+      .select('*, grading_students(name, class_id, classes(name)), assessments(nome_avaliacao, tipo_avaliacao, turma)')
       .eq('token', token)
       .maybeSingle()
 
@@ -93,11 +93,17 @@ const ScanPage: React.FC = () => {
       tokenRow.qr_code_data?.assessment_name ||
       'Avaliação'
 
+    const className =
+      tokenRow.grading_students?.classes?.name ||
+      tokenRow.assessments?.turma ||
+      tokenRow.qr_code_data?.class_name ||
+      'Turma'
+
     setScannedData({
       token,
       studentName: tokenRow.grading_students?.name || 'Aluno',
       assessmentName,
-      className: tokenRow.classes?.name || tokenRow.qr_code_data?.class_name || 'Turma',
+      className,
       alreadyGraded: !!existingResult,
     })
     setScanState('success')
@@ -109,7 +115,7 @@ const ScanPage: React.FC = () => {
     // First try to find an existing token for this pair
     const { data: tokenRow } = await supabase
       .from('assessment_tokens')
-      .select('token, user_id, grading_students(name), assessments(nome_avaliacao, tipo_avaliacao), classes(name), qr_code_data')
+      .select('token, user_id, grading_students(name, class_id, classes(name)), assessments(nome_avaliacao, tipo_avaliacao, turma), qr_code_data')
       .eq('assessment_id', assessmentId)
       .eq('student_id', studentId)
       .maybeSingle()
@@ -137,7 +143,7 @@ const ScanPage: React.FC = () => {
         token: tokenRow.token,
         studentName: tokenRow.grading_students?.name || fallbackName || 'Aluno',
         assessmentName,
-        className: tokenRow.classes?.name || tokenRow.qr_code_data?.class_name || 'Turma',
+        className: tokenRow.grading_students?.classes?.name || tokenRow.assessments?.turma || tokenRow.qr_code_data?.class_name || 'Turma',
         alreadyGraded: !!existingResult,
       })
       setScanState('success')

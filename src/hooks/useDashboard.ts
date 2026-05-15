@@ -227,7 +227,7 @@ export const useDashboard = (userId: string | undefined) => {
       const formattedResults = filteredAssessments.map((a: any) => ({
         id: a.id,
         title: a.nome_avaliacao || a.tipo_avaliacao || 'Avaliação sem nome',
-        description: `${a.turma || 'Sem turma'} - ${(a.selected_items || a.selectedItems || []).length} questões`,
+        description: `${a.turma || 'Sem turma'} - ${a.selectedItems?.length || 0} questões`,
         date: new Date(a.created_at).toLocaleDateString('pt-BR'),
         ...a
       }))
@@ -808,7 +808,7 @@ export const useDashboard = (userId: string | undefined) => {
     const formattedResults = filteredAssessments.map((assessment: any) => ({
       id: assessment.id,
       title: assessment.nome_avaliacao || assessment.tipo_avaliacao || 'Avaliação sem nome',
-      description: `${assessment.turma || 'Sem turma'} - ${(assessment.selected_items || assessment.selectedItems || []).length} questões`,
+      description: `${assessment.turma || 'Sem turma'} - ${assessment.selectedItems?.length || 0} questões`,
       date: new Date(assessment.created_at).toLocaleDateString('pt-BR'),
       ...assessment
     }))
@@ -1685,149 +1685,6 @@ export const useDashboard = (userId: string | undefined) => {
     closeModal()
   }, [correctionData, closeModal])
 
-  const handleDeleteAssessment = useCallback(async (assessmentId: number) => {
-    if (!confirm('Deseja realmente excluir esta avaliação? Esta ação não pode ser desfeita.')) return
-    try {
-      const { error } = await supabase
-        .from('assessments')
-        .delete()
-        .eq('id', assessmentId)
-      if (error) throw error
-      await loadAssessments()
-    } catch (error: any) {
-      console.error('Erro ao excluir avaliação:', error)
-      alert('Erro ao excluir avaliação. Tente novamente.')
-    }
-  }, [loadAssessments])
-
-  const handleViewAssessmentDetails = useCallback((assessment: any) => {
-    const items: any[] = assessment.selected_items || assessment.selectedItems || []
-    const title = assessment.nome_avaliacao || assessment.nomeAvaliacao || assessment.tipo_avaliacao || assessment.tipoAvaliacao || 'Avaliação'
-    const tipo = assessment.tipo_avaliacao || assessment.tipoAvaliacao || ''
-    const escola = assessment.nome_escola || assessment.nomeEscola || ''
-    const professor = assessment.professor || ''
-    const componente = assessment.componente_curricular || assessment.componenteCurricular || ''
-    const data = assessment.data ? new Date(assessment.data).toLocaleDateString('pt-BR') : ''
-    const instrucoes = assessment.instrucoes || ''
-
-    const getAlternativaLetter = (i: number) => String.fromCharCode(65 + i)
-
-    const renderItem = (item: any, index: number) => {
-      const tipoItem = item.tipo_item || item.tipoItem || ''
-      const texto = item.texto_item || item.textoItem || ''
-      const descritor = item.descritor || ''
-      const alternativas: string[] = item.alternativas || []
-      const respostaCorreta = item.resposta_correta || item.respostaCorreta || ''
-      const afirmativas: string[] = [...(item.afirmativas || []), ...(item.afirmativas_extras || item.afirmativasExtras || [])]
-      const gabarito: string[] = [...(item.gabarito_afirmativas || item.gabaritoAfirmativas || []), ...(item.gabarito_afirmativas_extras || item.gabaritoAfirmativasExtras || [])]
-
-      let alternativasHtml = ''
-      if (tipoItem === 'multipla_escolha') {
-        alternativasHtml = alternativas
-          .filter((a: string) => a && a.trim())
-          .map((alt: string, i: number) => {
-            const letter = getAlternativaLetter(i)
-            const isCorrect = respostaCorreta === letter
-            return `<div style="padding:4px 0; display:flex; gap:8px; ${isCorrect ? 'font-weight:600; color:#166534;' : ''}">
-              <span style="min-width:20px; font-weight:600;">${letter})</span>
-              <span>${alt}</span>
-              ${isCorrect ? '<span style="color:#16a34a; font-size:12px; margin-left:4px;">✓ Gabarito</span>' : ''}
-            </div>`
-          }).join('')
-      } else if (tipoItem === 'verdadeiro_falso') {
-        alternativasHtml = afirmativas
-          .filter((a: string) => a && a.trim())
-          .map((afirm: string, i: number) => {
-            const gab = gabarito[i] || ''
-            return `<div style="padding:4px 0; display:flex; gap:8px; align-items:flex-start;">
-              <span style="min-width:20px; color:#6b7280;">${i + 1}.</span>
-              <span style="flex:1;">${afirm}</span>
-              ${gab ? `<span style="min-width:40px; text-align:right; font-weight:700; color:${gab === 'V' ? '#15803d' : '#dc2626'};">${gab}</span>` : ''}
-            </div>`
-          }).join('')
-      } else if (tipoItem === 'discursiva') {
-        const linhas = parseInt(item.quantidade_linhas || item.quantidadeLinhas || '5', 10)
-        alternativasHtml = Array.from({ length: linhas }).map(() =>
-          '<div style="border-bottom:1px solid #d1d5db; height:28px; margin:4px 0;"></div>'
-        ).join('')
-      }
-
-      return `<div style="margin-bottom:24px; padding:16px; border:1px solid #e5e7eb; border-radius:8px; page-break-inside:avoid;">
-        <div style="display:flex; gap:8px; margin-bottom:8px; align-items:flex-start;">
-          <span style="font-weight:700; font-size:16px; min-width:28px;">${index + 1}.</span>
-          <div style="flex:1;">
-            <div style="font-size:13px; color:#6b7280; margin-bottom:6px;">${descritor}</div>
-            <div style="font-size:14px; line-height:1.6;">${texto}</div>
-          </div>
-        </div>
-        ${alternativasHtml ? `<div style="margin-top:12px; padding-left:36px;">${alternativasHtml}</div>` : ''}
-      </div>`
-    }
-
-    const itemsHtml = items.length > 0
-      ? items.map((item: any, i: number) => renderItem(item, i)).join('')
-      : '<p style="color:#6b7280; text-align:center; padding:40px 0;">Esta avaliação não possui questões.</p>'
-
-    const headerRows = [
-      escola ? `<tr><td style="padding:4px 8px; font-weight:600; white-space:nowrap;">NOME DA ESCOLA:</td><td style="padding:4px 8px;">${escola}</td></tr>` : '',
-      tipo ? `<tr><td style="padding:4px 8px; font-weight:600; white-space:nowrap;">INSTRUMENTO:</td><td style="padding:4px 8px;">${tipo}</td></tr>` : '',
-      professor ? `<tr><td style="padding:4px 8px; font-weight:600; white-space:nowrap;">PROFESSOR(A):</td><td style="padding:4px 8px;">${professor}</td></tr>` : '',
-      componente ? `<tr><td style="padding:4px 8px; font-weight:600; white-space:nowrap;">COMPONENTE CURRICULAR:</td><td style="padding:4px 8px;">${componente}</td></tr>` : '',
-      data ? `<tr><td style="padding:4px 8px; font-weight:600; white-space:nowrap;">DATA:</td><td style="padding:4px 8px;">${data}</td></tr>` : '',
-    ].filter(Boolean).join('')
-
-    const html = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; font-size: 14px; color: #111; background: #f9fafb; }
-    .page { max-width: 800px; margin: 0 auto; background: #fff; padding: 32px; }
-    @media print { body { background: #fff; } .no-print { display: none; } }
-  </style>
-</head>
-<body>
-<div class="page">
-  <div class="no-print" style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:16px;">
-    <button onclick="window.print()" style="background:#2563eb; color:#fff; border:none; padding:8px 16px; border-radius:6px; cursor:pointer; font-size:14px;">Imprimir</button>
-    <button onclick="window.close()" style="background:#6b7280; color:#fff; border:none; padding:8px 16px; border-radius:6px; cursor:pointer; font-size:14px;">Fechar</button>
-  </div>
-
-  <h1 style="text-align:center; font-size:20px; font-weight:700; margin-bottom:16px;">${title}</h1>
-
-  ${headerRows ? `<table style="width:100%; border-collapse:collapse; margin-bottom:16px; border:1px solid #e5e7eb; border-radius:6px; overflow:hidden;">${headerRows}</table>` : ''}
-
-  ${instrucoes ? `<div style="background:#fefce8; border:1px solid #fde047; border-radius:6px; padding:12px; margin-bottom:20px; font-size:13px;"><strong>Instruções:</strong> ${instrucoes}</div>` : ''}
-
-  <div style="margin-bottom:8px; padding:8px 0; border-bottom:2px solid #e5e7eb; font-size:13px; color:#4b5563;">
-    <strong>ESTUDANTE:</strong> ________________________________________
-    &nbsp;&nbsp;&nbsp; <strong>SÉRIE/TURMA:</strong> ________________
-  </div>
-
-  <div style="margin-top:20px;">
-    ${itemsHtml}
-  </div>
-
-  <div style="margin-top:24px; padding-top:16px; border-top:1px solid #e5e7eb; text-align:center; font-size:12px; color:#9ca3af;">
-    ${items.length} questão(ões) &mdash; gerado em ${new Date().toLocaleDateString('pt-BR')}
-  </div>
-</div>
-</body>
-</html>`
-
-    const blob = new Blob([html], { type: 'text/html; charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const w = window.open(url, '_blank')
-    if (w) {
-      w.addEventListener('load', () => URL.revokeObjectURL(url), { once: true })
-    } else {
-      setTimeout(() => URL.revokeObjectURL(url), 10000)
-    }
-  }, [])
-
   const handleDeleteGrading = useCallback(async (gradingId: string) => {
     if (!confirm('Tem certeza que deseja excluir esta correção? Esta ação não pode ser desfeita.')) {
       return
@@ -1978,8 +1835,6 @@ export const useDashboard = (userId: string | undefined) => {
     handleClearAllAnswers,
     handleSaveCorrection,
     handleDeleteGrading,
-    handleDeleteAssessment,
-    handleViewAssessmentDetails,
     loadItems,
     loadAssessments,
     loadClasses,
