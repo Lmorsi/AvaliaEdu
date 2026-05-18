@@ -78,26 +78,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   useEffect(() => {
     let mounted = true
+    let loadingResolved = false
 
-    const initAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (mounted) {
-          if (session?.user) {
-            const userData = await fetchUserProfile(session.user.id, session.user)
-            setUser(userData)
-          }
-          setLoading(false)
-        }
-      } catch (error) {
-        console.error('Error initializing auth:', error)
-        if (mounted) {
-          setLoading(false)
-        }
+    const resolveLoading = () => {
+      if (!loadingResolved && mounted) {
+        loadingResolved = true
+        setLoading(false)
       }
     }
 
-    initAuth()
+    // Safety timeout: never stay loading more than 5 seconds
+    const safetyTimer = setTimeout(resolveLoading, 5000)
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       (async () => {
@@ -114,12 +105,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           }
         } catch (error) {
           console.error('Error in auth state change:', error)
+        } finally {
+          resolveLoading()
         }
       })()
     })
 
+    // getSession to trigger initial auth state
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session && mounted) {
+        // No session — resolve loading immediately so the page can redirect
+        resolveLoading()
+      }
+      // If there IS a session, onAuthStateChange will fire and resolve loading
+    }).catch(() => {
+      resolveLoading()
+    })
+
     return () => {
       mounted = false
+      clearTimeout(safetyTimer)
       subscription.unsubscribe()
     }
   }, [])
