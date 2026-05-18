@@ -33,19 +33,6 @@ const ScanPage: React.FC = () => {
   const [manualToken, setManualToken] = useState('')
   const [showManual, setShowManual] = useState(false)
 
-  // Se vier com ?token= na URL (deep link do QR code), processar direto
-  const urlTokenRef = useRef(searchParams.get('token'))
-  const processedUrlToken = useRef(false)
-
-  useEffect(() => {
-    const urlToken = urlTokenRef.current
-    if (urlToken && user && !processedUrlToken.current) {
-      processedUrlToken.current = true
-      processToken(urlToken)
-    }
-  // processToken muda quando user muda — precisa estar na lista
-  }, [user, processToken])
-
   // Carregar jsQR dinamicamente
   useEffect(() => {
     if (typeof jsQR !== 'undefined') {
@@ -69,9 +56,8 @@ const ScanPage: React.FC = () => {
     setCameraReady(false)
   }, [])
 
-  // Lookup by token string in assessment_tokens table
+  // Lookup by token string — classes buscada via grading_students (sem FK direta)
   const lookupByToken = useCallback(async (token: string): Promise<boolean> => {
-    // classes não tem FK direta em assessment_tokens — buscar via grading_students
     const { data: tokenRow, error: tokenErr } = await supabase
       .from('assessment_tokens')
       .select('*, grading_students(name, classes(name)), assessments(nome_avaliacao, tipo_avaliacao)')
@@ -114,9 +100,8 @@ const ScanPage: React.FC = () => {
     return true
   }, [user?.id])
 
-  // Lookup by assessmentId + studentId for legacy QR codes (token: null)
+  // Lookup por assessmentId + studentId para QR codes legados
   const lookupByIds = useCallback(async (assessmentId: string, studentId: string, fallbackName: string): Promise<boolean> => {
-    // classes não tem FK direta em assessment_tokens — buscar via grading_students
     const { data: tokenRow } = await supabase
       .from('assessment_tokens')
       .select('token, user_id, grading_students(name, classes(name)), assessments(nome_avaliacao, tipo_avaliacao), qr_code_data')
@@ -159,7 +144,6 @@ const ScanPage: React.FC = () => {
       return true
     }
 
-    // No token registered yet — show info from the JSON payload itself
     setScannedData({
       token: '',
       studentName: fallbackName || 'Aluno',
@@ -184,7 +168,7 @@ const ScanPage: React.FC = () => {
     }
 
     try {
-      // Try JSON parse first (legacy format or old QR codes)
+      // Tentar JSON primeiro (formato legado)
       try {
         const parsed = JSON.parse(rawValue)
         if (parsed.token && typeof parsed.token === 'string') {
@@ -197,10 +181,10 @@ const ScanPage: React.FC = () => {
           return
         }
       } catch {
-        // Not JSON — could be a plain token string or a URL
+        // Não é JSON
       }
 
-      // Check if it's a deep-link URL: https://site.com/s/TOKEN
+      // Deep-link URL: https://site.com/s/TOKEN
       const urlMatch = rawValue.match(/\/s\/([^/?#]+)/)
       if (urlMatch) {
         const found = await lookupByToken(decodeURIComponent(urlMatch[1]))
@@ -208,14 +192,25 @@ const ScanPage: React.FC = () => {
         return
       }
 
-      // Treat as plain token string
+      // Plain token string
       const found = await lookupByToken(rawValue)
       if (!found) handleNotFound()
-    } catch (e) {
+    } catch {
       setScanState('error')
       setErrorMsg('Erro ao validar o cartão. Tente novamente.')
     }
   }, [stopCamera, lookupByToken, lookupByIds])
+
+  // Deep link: ?token=TOKEN na URL — processar uma única vez quando user estiver pronto
+  const urlToken = searchParams.get('token')
+  const processedUrlToken = useRef(false)
+
+  useEffect(() => {
+    if (urlToken && user && !processedUrlToken.current) {
+      processedUrlToken.current = true
+      processToken(urlToken)
+    }
+  }, [urlToken, user, processToken])
 
   const startScanning = useCallback(() => {
     if (!cameraReady || !jsQRLoaded) return
@@ -294,6 +289,7 @@ const ScanPage: React.FC = () => {
     setErrorMsg('')
     setManualToken('')
     lastScannedRef.current = ''
+    processedUrlToken.current = false
   }
 
   const handleManualSubmit = () => {
@@ -392,12 +388,10 @@ const ScanPage: React.FC = () => {
               {/* Overlay de mira */}
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="relative w-56 h-56">
-                  {/* Cantos */}
-                  <div className="absolute top-0 left-0 w-8 h-8 border-t-3 border-l-3 border-blue-400 rounded-tl-lg" style={{ borderWidth: '3px 0 0 3px' }} />
-                  <div className="absolute top-0 right-0 w-8 h-8 border-t-3 border-r-3 border-blue-400 rounded-tr-lg" style={{ borderWidth: '3px 3px 0 0' }} />
-                  <div className="absolute bottom-0 left-0 w-8 h-8 border-b-3 border-l-3 border-blue-400 rounded-bl-lg" style={{ borderWidth: '0 0 3px 3px' }} />
-                  <div className="absolute bottom-0 right-0 w-8 h-8 border-b-3 border-r-3 border-blue-400 rounded-br-lg" style={{ borderWidth: '0 3px 3px 0' }} />
-                  {/* Linha de scan animada */}
+                  <div className="absolute top-0 left-0 w-8 h-8" style={{ borderWidth: '3px 0 0 3px', borderColor: '#60a5fa', borderStyle: 'solid', borderRadius: '4px 0 0 0' }} />
+                  <div className="absolute top-0 right-0 w-8 h-8" style={{ borderWidth: '3px 3px 0 0', borderColor: '#60a5fa', borderStyle: 'solid', borderRadius: '0 4px 0 0' }} />
+                  <div className="absolute bottom-0 left-0 w-8 h-8" style={{ borderWidth: '0 0 3px 3px', borderColor: '#60a5fa', borderStyle: 'solid', borderRadius: '0 0 0 4px' }} />
+                  <div className="absolute bottom-0 right-0 w-8 h-8" style={{ borderWidth: '0 3px 3px 0', borderColor: '#60a5fa', borderStyle: 'solid', borderRadius: '0 0 4px 0' }} />
                   <div className="absolute inset-x-2 top-0 h-0.5 bg-blue-400 opacity-80 animate-scan" />
                 </div>
               </div>
@@ -466,7 +460,7 @@ const ScanPage: React.FC = () => {
 
             {scannedData.alreadyGraded && (
               <div className="bg-gray-800 border border-gray-700 rounded-xl p-3 text-xs text-gray-400">
-                Este aluno ja possui resultado registrado. Você pode corrigir novamente, mas o resultado anterior sera substituído ao salvar.
+                Este aluno já possui resultado registrado. Você pode corrigir novamente, mas o resultado anterior será substituído ao salvar.
               </div>
             )}
 
