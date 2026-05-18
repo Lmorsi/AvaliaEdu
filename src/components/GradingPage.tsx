@@ -11,12 +11,13 @@ interface GradingPageProps {
   onNavigateToMain: () => void
   onNavigateToReports: () => void
   onNavigateToClasses: () => void
+  initialToken?: string
 }
 
-const GradingPage: React.FC<GradingPageProps> = ({ onNavigateToMain, onNavigateToReports, onNavigateToClasses }) => {
+const GradingPage: React.FC<GradingPageProps> = ({ onNavigateToMain, onNavigateToReports, onNavigateToClasses, initialToken }) => {
   const { user, logout, updateUserName } = useAuth()
   const dashboard = useDashboard(user?.id)
-  const grading = useGrading(user?.id, dashboard.savedAssessments)
+  const grading = useGrading(user?.id, dashboard.savedAssessments, initialToken)
 
   return (
     <div className="dashboard flex h-screen bg-gray-50 overflow-hidden">

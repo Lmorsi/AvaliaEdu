@@ -245,20 +245,35 @@ const GradingSection: React.FC<GradingSectionProps> = ({ dashboard, onNavigateTo
 
             {dashboard.selectedAssessmentForGrading && dashboard.gradingData.totalQuestions > 0 && (
               <div className="flex flex-col gap-3">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
-                  <i className="fas fa-info-circle text-blue-500 mt-0.5 text-sm flex-shrink-0"></i>
-                  <p className="text-xs text-blue-700">
-                    Use "Escanear Cartão" para identificar o aluno automaticamente pelo QR code impresso na folha individual. Gere as folhas individuais em "+ Nova Avaliação".
-                  </p>
-                </div>
+                {dashboard.tokenStudentId ? (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-start gap-2">
+                    <i className="fas fa-qrcode text-green-500 mt-0.5 text-sm flex-shrink-0"></i>
+                    <div>
+                      <p className="text-xs font-medium text-green-800">Aluno identificado pelo QR code</p>
+                      <p className="text-xs text-green-700 mt-0.5">
+                        {dashboard.students.find((s: any) => s.id === dashboard.tokenStudentId)?.name || 'Aluno identificado'}
+                        {' — '}clique em "Iniciar Correção" para continuar
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+                    <i className="fas fa-info-circle text-blue-500 mt-0.5 text-sm flex-shrink-0"></i>
+                    <p className="text-xs text-blue-700">
+                      Use "Escanear Cartão" para identificar o aluno automaticamente pelo QR code impresso na folha individual. Gere as folhas individuais em "+ Nova Avaliação".
+                    </p>
+                  </div>
+                )}
 
-                <button
-                  onClick={() => navigate('/scan')}
-                  className="w-full bg-gray-700 text-white py-2.5 px-4 rounded-md hover:bg-gray-800 transition-colors text-sm font-medium flex items-center justify-center gap-2"
-                >
-                  <i className="fas fa-qrcode text-sm"></i>
-                  Escanear Cartão
-                </button>
+                {!dashboard.tokenStudentId && (
+                  <button
+                    onClick={() => navigate('/scan')}
+                    className="w-full bg-gray-700 text-white py-2.5 px-4 rounded-md hover:bg-gray-800 transition-colors text-sm font-medium flex items-center justify-center gap-2"
+                  >
+                    <i className="fas fa-qrcode text-sm"></i>
+                    Escanear Cartão
+                  </button>
+                )}
 
                 <button
                   onClick={dashboard.handleStartGrading}
@@ -266,7 +281,7 @@ const GradingSection: React.FC<GradingSectionProps> = ({ dashboard, onNavigateTo
                   className="w-full bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 transition-colors text-sm font-medium disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
                   <i className="fas fa-play mr-2"></i>
-                  Iniciar Correção Manual
+                  {dashboard.tokenStudentId ? 'Iniciar Correção' : 'Iniciar Correção Manual'}
                 </button>
               </div>
             )}

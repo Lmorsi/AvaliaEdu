@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { generateUniqueToken } from '../lib/tokenUtils'
 import type { Class, Student, AssessmentGrading, StudentResult, QuestionStatistic, Folder } from '../lib/supabase'
 
-export const useGrading = (userId: string | undefined, savedAssessments?: any[]) => {
+export const useGrading = (userId: string | undefined, savedAssessments?: any[], initialToken?: string) => {
   const [classes, setClasses] = useState<Class[]>([])
   const [students, setStudents] = useState<Student[]>([])
   const [gradings, setGradings] = useState<AssessmentGrading[]>([])
@@ -49,6 +49,7 @@ export const useGrading = (userId: string | undefined, savedAssessments?: any[])
   })
 
   const [studentAnswers, setStudentAnswers] = useState<Record<string, string[]>>({})
+  const [tokenStudentId, setTokenStudentId] = useState<string | null>(null)
 
   useEffect(() => {
     if (userId) {
@@ -57,6 +58,118 @@ export const useGrading = (userId: string | undefined, savedAssessments?: any[])
       loadFolders()
     }
   }, [userId])
+
+  // Processar token inicial do QR code para pré-selecionar turma, avaliação e aluno
+  useEffect(() => {
+    if (!initialToken || !userId || !savedAssessments || savedAssessments.length === 0) return
+
+    const resolveToken = async () => {
+      try {
+        const { data: tokenRow, error } = await supabase
+          .from('assessment_tokens')
+          .select('student_id, user_id, assessment_id, grading_students(id, name, class_id), assessments(id), classes(id, name, school_year)')
+          .eq('token', initialToken)
+          .maybeSingle()
+
+        if (error || !tokenRow) return
+        if (tokenRow.user_id !== userId) return
+
+        const classItem = tokenRow.classes
+        const student = tokenRow.grading_students
+        const assessmentRef = tokenRow.assessments
+
+        if (student) {
+          setTokenStudentId(student.id)
+        }
+
+        if (classItem) {
+          setSelectedClassForGrading(classItem)
+          await loadStudents(classItem.id)
+        }
+
+        if (assessmentRef) {
+          const fullAssessment = savedAssessments.find((a: any) => a.id.toString() === assessmentRef.id.toString())
+          if (fullAssessment) {
+            setSelectedAssessmentForGrading(fullAssessment)
+
+            const answerKey: string[] = []
+            const itemDescriptors: string[] = []
+            const itemTypes: string[] = []
+            const itemAlternatives: string[][] = []
+            const itemGroups: number[][] = []
+            let answerIndex = 0
+            let totalItems = 0
+
+            const selectedItems = fullAssessment.selectedItems || fullAssessment.selected_items || []
+            selectedItems.forEach((item: any) => {
+              const tipoItem = item.tipoItem || item.tipo_item
+              const descritor = item.descritor || ''
+
+              if (tipoItem === 'multipla_escolha') {
+                const respostaCorreta = item.respostaCorreta || item.resposta_correta || ''
+                const alternativas = item.alternativas || []
+                const opcoes = alternativas
+                  .filter((alt: string) => alt && alt.trim())
+                  .map((_: string, idx: number) => String.fromCharCode(65 + idx))
+
+                answerKey.push(respostaCorreta)
+                itemDescriptors.push(descritor)
+                itemTypes.push('multipla_escolha')
+                itemAlternatives.push(opcoes)
+                itemGroups.push([answerIndex])
+                answerIndex++
+                totalItems++
+              } else if (tipoItem === 'verdadeiro_falso') {
+                const afirmativas = [
+                  ...(item.afirmativas || []),
+                  ...(item.afirmativas_extras || item.afirmativasExtras || [])
+                ].filter((a: string) => a && a.trim())
+
+                const gabaritos = [
+                  ...(item.gabarito_afirmativas || item.gabaritoAfirmativas || []),
+                  ...(item.gabarito_afirmativas_extras || item.gabaritoAfirmativasExtras || [])
+                ].filter((g: string, idx: number) => {
+                  const afirmativa = afirmativas[idx]
+                  return afirmativa && afirmativa.trim()
+                })
+
+                const groupIndices: number[] = []
+                gabaritos.forEach((gabarito: string) => {
+                  answerKey.push(gabarito)
+                  itemDescriptors.push(descritor)
+                  itemTypes.push('verdadeiro_falso')
+                  itemAlternatives.push(['V', 'F'])
+                  groupIndices.push(answerIndex)
+                  answerIndex++
+                })
+                itemGroups.push(groupIndices)
+                totalItems++
+              }
+            })
+
+            const nomeAvaliacao = fullAssessment.nomeAvaliacao || fullAssessment.nome_avaliacao ||
+                                  fullAssessment.tipoAvaliacao || fullAssessment.tipo_avaliacao || 'Avaliação'
+
+            setGradingData({
+              assessmentName: nomeAvaliacao,
+              totalQuestions: totalItems,
+              answerKey,
+              itemDescriptors,
+              itemTypes,
+              itemAlternatives,
+              itemGroups,
+              folderId: null
+            })
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao resolver token inicial:', err)
+      }
+    }
+
+    resolveToken()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialToken, userId, savedAssessments?.length])
 
   const loadClasses = async () => {
     try {
@@ -1122,6 +1235,7 @@ export const useGrading = (userId: string | undefined, savedAssessments?: any[])
     selectedClass,
     selectedClassForGrading,
     selectedAssessmentForGrading,
+    tokenStudentId,
     selectedReport,
     selectedFolder,
     compiledReports,

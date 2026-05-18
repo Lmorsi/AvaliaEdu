@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 
 interface GradingModalProps {
   isOpen: boolean
@@ -9,6 +9,16 @@ interface GradingModalProps {
 const GradingModal: React.FC<GradingModalProps> = ({ isOpen, onClose, dashboard }) => {
   const [showCancelConfirmation, setShowCancelConfirmation] = useState(false)
   const [showSaveConfirmation, setShowSaveConfirmation] = useState(false)
+
+  const tokenStudentRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (isOpen && dashboard.tokenStudentId && tokenStudentRef.current) {
+      setTimeout(() => {
+        tokenStudentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 150)
+    }
+  }, [isOpen, dashboard.tokenStudentId])
 
   if (!isOpen) return null
 
@@ -89,13 +99,23 @@ const GradingModal: React.FC<GradingModalProps> = ({ isOpen, onClose, dashboard 
               </div>
 
               {dashboard.students.map((student: any, studentIndex: number) => (
-                <div key={student.id} className="border rounded-lg p-4 bg-white">
+                <div
+                  key={student.id}
+                  ref={student.id === dashboard.tokenStudentId ? tokenStudentRef : undefined}
+                  className={`border rounded-lg p-4 bg-white ${student.id === dashboard.tokenStudentId ? 'ring-2 ring-green-500 border-green-400' : ''}`}
+                >
                   <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-medium text-gray-900">
+                    <h4 className="font-medium text-gray-900 flex items-center gap-2 flex-wrap">
                       {studentIndex + 1}. {student.name}
                       {student.registration_number && (
-                        <span className="text-xs text-gray-500 ml-2">
+                        <span className="text-xs text-gray-500">
                           ({student.registration_number})
+                        </span>
+                      )}
+                      {student.id === dashboard.tokenStudentId && (
+                        <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+                          <i className="fas fa-qrcode mr-1"></i>
+                          QR Code
                         </span>
                       )}
                     </h4>

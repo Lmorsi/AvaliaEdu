@@ -92,6 +92,7 @@ const DashboardRouter: React.FC = () => {
           onNavigateToMain={nav.toMain}
           onNavigateToReports={nav.toReports}
           onNavigateToClasses={nav.toClasses}
+          initialToken={locationState?.token}
         />
       )}
       {currentView === 'reports' && (
