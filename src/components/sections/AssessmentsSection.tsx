@@ -127,7 +127,11 @@ const AssessmentsSection: React.FC<AssessmentsSectionProps> = ({ dashboard }) =>
                           <p className="text-xs md:text-sm text-gray-600 mt-1">{assessment.description}</p>
                           <div className="flex items-center justify-between mt-2 md:mt-3">
                             <span className="text-xs text-gray-500">{assessment.date}</span>
-                            <button className="text-blue-600 hover:text-blue-700 text-xs md:text-sm">
+                            <button
+                              onClick={() => dashboard.handleViewAssessmentDetails(assessment)}
+                              className="text-blue-600 hover:text-blue-700 text-xs md:text-sm font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+                            >
+                              <i className="fas fa-eye mr-1"></i>
                               Ver detalhes
                             </button>
                           </div>
