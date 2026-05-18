@@ -682,53 +682,46 @@ export const useDashboard = (userId: string | undefined) => {
   }, [])
 
   const handleItemSearch = useCallback(async () => {
-    let items = savedItems
-    if (items.length === 0 && userId) {
-      // dados ainda não chegaram — buscar diretamente
-      const { data } = await supabase
-        .from('items')
-        .select('*')
-        .order('created_at', { ascending: false })
-      items = (data || []).map((item: any) => ({
-        ...item,
-        title: `${item.descritor?.substring(0, 50) || ''}...`,
-        description: `${item.texto_item?.substring(0, 100) || ''}...`,
-        subject: item.disciplina || 'Não especificada'
-      }))
-      setSavedItems(items)
-      setFilteredSavedItems(items.filter((item: any) => item.user_id === userId))
-    }
+    if (!userId) return
 
-    let filteredItems = [...items]
+    let query = supabase
+      .from('items')
+      .select('*')
+      .order('created_at', { ascending: false })
 
     if (itemFilters.keywords) {
-      filteredItems = filteredItems.filter((item: any) =>
-        (item.texto_item || '').toLowerCase().includes(itemFilters.keywords.toLowerCase()) ||
-        (item.descritor || '').toLowerCase().includes(itemFilters.keywords.toLowerCase()) ||
-        (item.disciplina || '').toLowerCase().includes(itemFilters.keywords.toLowerCase())
+      const kw = itemFilters.keywords
+      query = query.or(
+        `texto_item.ilike.%${kw}%,descritor.ilike.%${kw}%,disciplina.ilike.%${kw}%`
       )
     }
 
     if (itemFilters.subject && itemFilters.subject !== "") {
-      filteredItems = filteredItems.filter((item: any) =>
-        item.disciplina === itemFilters.subject
-      )
+      query = query.eq('disciplina', itemFilters.subject)
     }
 
     if (!itemFilters.questionTypes.includes("Todas")) {
-      filteredItems = filteredItems.filter((item: any) => {
-        const tipoMap: any = {
-          "multipla_escolha": "Múltipla Escolha",
-          "verdadeiro_falso": "Verdadeiro/Falso",
-          "discursiva": "Discursiva"
-        }
-        return itemFilters.questionTypes.includes(tipoMap[item.tipo_item])
-      })
+      const tipoReverseMap: any = {
+        "Múltipla Escolha": "multipla_escolha",
+        "Verdadeiro/Falso": "verdadeiro_falso",
+        "Discursiva": "discursiva"
+      }
+      const dbTypes = itemFilters.questionTypes.map((t: string) => tipoReverseMap[t]).filter(Boolean)
+      if (dbTypes.length > 0) query = query.in('tipo_item', dbTypes)
     }
 
+    const { data } = await query
+
+    const items = (data || []).map((item: any) => ({
+      ...item,
+      title: `${item.descritor?.substring(0, 50) || ''}...`,
+      description: `${item.texto_item?.substring(0, 100) || ''}...`,
+      subject: item.disciplina || 'Não especificada'
+    }))
+
     setHasSearched((prev: any) => ({ ...prev, items: true }))
-    setSearchResults((prev: any) => ({ ...prev, items: filteredItems }))
-  }, [itemFilters, savedItems, userId])
+    setSearchResults((prev: any) => ({ ...prev, items }))
+  }, [itemFilters, userId])
 
   const handleSearchMyItems = useCallback(() => {
     console.log("Pesquisando meus itens com filtros:", myItemsFilters)
@@ -762,50 +755,36 @@ export const useDashboard = (userId: string | undefined) => {
   }, [myItemsFilters, savedItems, userId])
 
   const handleAssessmentSearch = useCallback(async () => {
-    let assessments = savedAssessments
-    if (assessments.length === 0 && userId) {
-      // dados ainda não chegaram — buscar diretamente
-      const { data } = await supabase
-        .from('assessments')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-      assessments = data || []
-      setSavedAssessments(assessments)
-    }
+    if (!userId) return
 
-    let filteredAssessments = [...assessments]
+    let query = supabase
+      .from('assessments')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
 
     if (assessmentFilters.keywords) {
-      filteredAssessments = filteredAssessments.filter((assessment: any) =>
-        (assessment.nome_avaliacao || '').toLowerCase().includes(assessmentFilters.keywords.toLowerCase()) ||
-        (assessment.tipo_avaliacao || '').toLowerCase().includes(assessmentFilters.keywords.toLowerCase()) ||
-        (assessment.professor || '').toLowerCase().includes(assessmentFilters.keywords.toLowerCase()) ||
-        (assessment.turma || '').toLowerCase().includes(assessmentFilters.keywords.toLowerCase())
+      const kw = assessmentFilters.keywords
+      query = query.or(
+        `nome_avaliacao.ilike.%${kw}%,tipo_avaliacao.ilike.%${kw}%,professor.ilike.%${kw}%,turma.ilike.%${kw}%`
       )
     }
 
     if (assessmentFilters.dateFrom) {
-      filteredAssessments = filteredAssessments.filter((assessment: any) => {
-        const assessmentDate = new Date(assessment.created_at).toISOString().split('T')[0]
-        return assessmentDate >= assessmentFilters.dateFrom
-      })
+      query = query.gte('created_at', `${assessmentFilters.dateFrom}T00:00:00`)
     }
 
     if (assessmentFilters.dateTo) {
-      filteredAssessments = filteredAssessments.filter((assessment: any) => {
-        const assessmentDate = new Date(assessment.created_at).toISOString().split('T')[0]
-        return assessmentDate <= assessmentFilters.dateTo
-      })
+      query = query.lte('created_at', `${assessmentFilters.dateTo}T23:59:59`)
     }
 
     if (!assessmentFilters.assessmentTypes.includes("Todas")) {
-      filteredAssessments = filteredAssessments.filter((assessment: any) =>
-        assessmentFilters.assessmentTypes.includes(assessment.tipo_avaliacao)
-      )
+      query = query.in('tipo_avaliacao', assessmentFilters.assessmentTypes)
     }
 
-    const formattedResults = filteredAssessments.map((assessment: any) => ({
+    const { data } = await query
+
+    const formattedResults = (data || []).map((assessment: any) => ({
       id: assessment.id,
       title: assessment.nome_avaliacao || assessment.tipo_avaliacao || 'Avaliação sem nome',
       description: `${assessment.turma || 'Sem turma'} - ${(assessment.selected_items || assessment.selectedItems || []).length} questões`,
@@ -815,7 +794,7 @@ export const useDashboard = (userId: string | undefined) => {
 
     setHasSearched((prev: any) => ({ ...prev, assessments: true }))
     setSearchResults((prev: any) => ({ ...prev, assessments: formattedResults }))
-  }, [assessmentFilters, savedAssessments, userId])
+  }, [assessmentFilters, userId])
 
   const handleAddHeaderImage = useCallback(() => {
     const input = document.createElement("input")
