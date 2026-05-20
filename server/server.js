@@ -99,12 +99,12 @@ const generateAnswerSheet = async (finalData) => {
 
   // 3. CONSTRUIR O HTML DO GABARITO - 4 COLUNAS COM MÁXIMO 15 QUESTÕES CADA
   let answerSheetHTML = `
-    <div style="position: relative; padding: 8mm 8mm 8mm 8mm; margin-top: 5mm; page-break-inside: avoid;">
+    <div style="position: relative; padding: 12mm 12mm 10mm 12mm; margin-top: 5mm; page-break-inside: avoid;">
       <!-- 4 ArUco Markers nos cantos (DICT_4X4_50: TL=ID0, TR=ID1, BL=ID2, BR=ID3) -->
-      <img src="data:image/png;base64,${ARUCO_TL}" style="position: absolute; top: 1mm; left: 1mm; width: 8mm; height: 8mm; image-rendering: pixelated;" />
-      <img src="data:image/png;base64,${ARUCO_TR}" style="position: absolute; top: 1mm; right: 1mm; width: 8mm; height: 8mm; image-rendering: pixelated;" />
-      <img src="data:image/png;base64,${ARUCO_BL}" style="position: absolute; bottom: 1mm; left: 1mm; width: 8mm; height: 8mm; image-rendering: pixelated;" />
-      <img src="data:image/png;base64,${ARUCO_BR}" style="position: absolute; bottom: 1mm; right: 1mm; width: 8mm; height: 8mm; image-rendering: pixelated;" />
+      <img src="data:image/png;base64,${ARUCO_TL}" style="position: absolute; top: 1mm; left: 1mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
+      <img src="data:image/png;base64,${ARUCO_TR}" style="position: absolute; top: 1mm; right: 1mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
+      <img src="data:image/png;base64,${ARUCO_BL}" style="position: absolute; bottom: 1mm; left: 1mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
+      <img src="data:image/png;base64,${ARUCO_BR}" style="position: absolute; bottom: 1mm; right: 1mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
 
       <!-- Cabeçalho do Gabarito com QR Code -->
       <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #ccc; padding-bottom: 3mm; margin-bottom: 3mm;">
