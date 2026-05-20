@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>OMR Test - AvaliaEdu</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 32px 16px;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #f8fafc;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      font-size: 0.875rem;
+      color: #94a3b8;
+      margin-bottom: 32px;
+    }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+      max-width: 900px;
+    }
+
+    .card h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #cbd5e1;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-size: 0.75rem;
+    }
+
+    .drop-zone {
+      border: 2px dashed #475569;
+      border-radius: 8px;
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: #3b82f6;
+      background: #1d3b6e22;
+    }
+
+    .drop-zone input { display: none; }
+
+    .drop-zone .icon {
+      font-size: 2.5rem;
+      margin-bottom: 12px;
+      display: block;
+    }
+
+    .drop-zone p {
+      color: #94a3b8;
+      font-size: 0.9rem;
+    }
+
+    .drop-zone p strong { color: #cbd5e1; }
+
+    .preview-thumb {
+      margin-top: 16px;
+      max-height: 200px;
+      border-radius: 6px;
+      border: 1px solid #334155;
+      display: none;
+    }
+
+    button {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 28px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      width: 100%;
+      margin-top: 16px;
+    }
+
+    button:hover { background: #1d4ed8; }
+    button:disabled { background: #475569; cursor: not-allowed; }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.875rem;
+      margin-top: 12px;
+      min-height: 24px;
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #475569;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .results-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    @media (max-width: 600px) {
+      .results-grid { grid-template-columns: 1fr; }
+    }
+
+    .result-block {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .result-block h3 {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 12px;
+      color: #64748b;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .badge.ok   { background: #14532d44; color: #4ade80; border: 1px solid #16a34a55; }
+    .badge.fail { background: #7f1d1d44; color: #f87171; border: 1px solid #dc262655; }
+    .badge.warn { background: #78350f44; color: #fbbf24; border: 1px solid #d9770655; }
+
+    .field { margin-bottom: 8px; font-size: 0.875rem; }
+    .field span { color: #64748b; }
+    .field strong { color: #e2e8f0; word-break: break-all; }
+
+    .debug-img-wrapper {
+      margin-top: 16px;
+    }
+
+    .debug-img-wrapper img {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid #334155;
+    }
+
+    .json-box {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 16px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.78rem;
+      color: #94a3b8;
+      overflow-x: auto;
+      white-space: pre;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .url-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .url-row input {
+      flex: 1;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: #e2e8f0;
+      font-size: 0.9rem;
+    }
+
+    .url-row input:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+
+    #health-badge { font-size: 0.8rem; }
+
+    .corners-list {
+      font-size: 0.8rem;
+      color: #94a3b8;
+      margin-top: 6px;
+    }
+
+    .corners-list li { list-style: none; padding: 2px 0; }
+    .corners-list span { color: #e2e8f0; font-family: monospace; }
+  </style>
+</head>
+<body>
+
+  <h1>OMR Test — AvaliaEdu</h1>
+  <p class="subtitle">Teste visual das Fases 1, 2 e 3 do servico de leitura de folhas</p>
+
+  <!-- Configuracao -->
+  <div class="card">
+    <h2>Configuracao</h2>
+    <div class="url-row">
+      <input id="service-url" type="text" value="http://127.0.0.1:8000" placeholder="URL do servico OMR" />
+      <button id="btn-health" style="width:auto; margin-top:0;">Testar Conexao</button>
+    </div>
+    <div id="health-result"></div>
+  </div>
+
+  <!-- Upload -->
+  <div class="card">
+    <h2>Fase 2 + 3 — Enviar imagem</h2>
+
+    <div class="drop-zone" id="drop-zone">
+      <input type="file" id="file-input" accept="image/*" />
+      <span class="icon">📷</span>
+      <p><strong>Clique ou arraste</strong> uma foto da folha de resposta</p>
+      <p style="margin-top:6px; font-size:0.78rem;">JPEG ou PNG — foto tirada pelo celular funciona</p>
+      <img id="preview-thumb" class="preview-thumb" />
+    </div>
+
+    <button id="btn-scan" disabled>Enviar para o servico OMR</button>
+
+    <div class="status">
+      <div class="spinner" id="spinner"></div>
+      <span id="status-msg" style="color:#64748b;">Selecione uma imagem para comecar</span>
+    </div>
+  </div>
+
+  <!-- Resultados -->
+  <div class="card" id="results-card" style="display:none;">
+    <h2>Resultado</h2>
+
+    <div class="results-grid">
+
+      <!-- QR Code -->
+      <div class="result-block">
+        <h3>Fase 2 — QR Code</h3>
+        <div id="qr-content">—</div>
+      </div>
+
+      <!-- Fiduciais -->
+      <div class="result-block">
+        <h3>Fase 3 — Marcadores Fiduciais</h3>
+        <div id="fid-content">—</div>
+      </div>
+
+    </div>
+
+    <!-- Debug image -->
+    <div class="debug-img-wrapper" id="debug-wrapper" style="display:none;">
+      <p style="font-size:0.75rem;color:#64748b;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">Imagem de debug (fiduciais marcados)</p>
+      <img id="debug-img" src="" alt="Debug image" />
+    </div>
+
+    <!-- JSON bruto -->
+    <details style="margin-top:16px;">
+      <summary style="cursor:pointer; font-size:0.8rem; color:#64748b; user-select:none;">JSON bruto da resposta</summary>
+      <div class="json-box" id="json-raw" style="margin-top:8px;"></div>
+    </details>
+  </div>
+
+<script>
+  const serviceUrlInput = document.getElementById('service-url');
+  const btnHealth       = document.getElementById('btn-health');
+  const healthResult    = document.getElementById('health-result');
+  const dropZone        = document.getElementById('drop-zone');
+  const fileInput       = document.getElementById('file-input');
+  const previewThumb    = document.getElementById('preview-thumb');
+  const btnScan         = document.getElementById('btn-scan');
+  const spinner         = document.getElementById('spinner');
+  const statusMsg       = document.getElementById('status-msg');
+  const resultsCard     = document.getElementById('results-card');
+  const qrContent       = document.getElementById('qr-content');
+  const fidContent      = document.getElementById('fid-content');
+  const debugWrapper    = document.getElementById('debug-wrapper');
+  const debugImg        = document.getElementById('debug-img');
+  const jsonRaw         = document.getElementById('json-raw');
+
+  let selectedFile = null;
+
+  // ── Health check ──────────────────────────────────────────────────────────
+  btnHealth.addEventListener('click', async () => {
+    const url = serviceUrlInput.value.trim();
+    healthResult.innerHTML = '<span style="color:#64748b;font-size:0.85rem;">Verificando...</span>';
+    try {
+      const res = await fetch(`${url}/api/health`);
+      const data = await res.json();
+      const ok = data.status === 'ok';
+      healthResult.innerHTML = `
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
+          <span class="badge ${ok ? 'ok' : 'fail'}">${ok ? '✓' : '✗'} Servico ${ok ? 'online' : 'offline'}</span>
+          <span class="badge ${data.opencv_available ? 'ok' : 'fail'}">OpenCV ${data.opencv_available ? 'ok' : 'ausente'}</span>
+          <span class="badge ${data.pyzbar_available ? 'ok' : 'warn'}">pyzbar ${data.pyzbar_available ? 'ok' : 'ausente'}</span>
+          <span class="badge ok">v${data.version}</span>
+        </div>`;
+    } catch (e) {
+      healthResult.innerHTML = `<span class="badge fail">✗ Nao foi possivel conectar: ${e.message}</span>`;
+    }
+  });
+
+  // ── Drag & drop ───────────────────────────────────────────────────────────
+  dropZone.addEventListener('click', () => fileInput.click());
+
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f) setFile(f);
+  });
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) setFile(fileInput.files[0]);
+  });
+
+  function setFile(f) {
+    selectedFile = f;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      previewThumb.src = ev.target.result;
+      previewThumb.style.display = 'block';
+    };
+    reader.readAsDataURL(f);
+    btnScan.disabled = false;
+    statusMsg.textContent = `Arquivo: ${f.name} (${(f.size / 1024).toFixed(0)} KB)`;
+    statusMsg.style.color = '#94a3b8';
+    resultsCard.style.display = 'none';
+  }
+
+  // ── Scan ──────────────────────────────────────────────────────────────────
+  btnScan.addEventListener('click', async () => {
+    if (!selectedFile) return;
+
+    const url = serviceUrlInput.value.trim();
+    btnScan.disabled = true;
+    spinner.style.display = 'block';
+    statusMsg.textContent = 'Enviando imagem...';
+    statusMsg.style.color = '#94a3b8';
+    resultsCard.style.display = 'none';
+
+    const form = new FormData();
+    form.append('photo', selectedFile);
+
+    try {
+      const res = await fetch(`${url}/api/omr/scan?debug=true`, {
+        method: 'POST',
+        body: form,
+      });
+
+      const data = await res.json();
+
+      spinner.style.display = 'none';
+      btnScan.disabled = false;
+      statusMsg.textContent = res.ok ? 'Resposta recebida com sucesso.' : `Erro HTTP ${res.status}`;
+      statusMsg.style.color = res.ok ? '#4ade80' : '#f87171';
+
+      renderResults(data);
+    } catch (e) {
+      spinner.style.display = 'none';
+      btnScan.disabled = false;
+      statusMsg.textContent = `Erro: ${e.message}`;
+      statusMsg.style.color = '#f87171';
+    }
+  });
+
+  function renderResults(data) {
+    resultsCard.style.display = 'block';
+    jsonRaw.textContent = JSON.stringify(data, null, 2);
+
+    // QR
+    if (data.qr) {
+      const fmt = { url: 'URL', json_legacy: 'JSON legado', direct_token: 'Token direto', unknown: 'Desconhecido' };
+      qrContent.innerHTML = `
+        <span class="badge ok" style="margin-bottom:12px;">✓ QR lido</span>
+        <div class="field"><span>Formato: </span><strong>${fmt[data.qr.format] || data.qr.format}</strong></div>
+        <div class="field"><span>Token: </span><strong>${data.qr.token || '(nenhum)'}</strong></div>
+        <div class="field" style="margin-top:8px;"><span>Bruto: </span><strong style="font-size:0.78rem;color:#64748b;">${data.qr.raw}</strong></div>`;
+    } else {
+      qrContent.innerHTML = `<span class="badge fail">✗ QR nao encontrado</span>
+        <p style="margin-top:10px;font-size:0.82rem;color:#94a3b8;">Verifique se o QR code esta visivel e bem iluminado.</p>`;
+    }
+
+    // Fiduciais
+    if (data.fiducial && data.fiducial.found) {
+      const labels = ['TL', 'TR', 'BR', 'BL'];
+      const cornerItems = data.fiducial.corners.map((c, i) =>
+        `<li>${labels[i]}: <span>(${c[0].toFixed(0)}, ${c[1].toFixed(0)})</span></li>`
+      ).join('');
+      fidContent.innerHTML = `
+        <span class="badge ok" style="margin-bottom:12px;">✓ 4 marcadores detectados</span>
+        <ul class="corners-list">${cornerItems}</ul>`;
+    } else {
+      const count = data.fiducial ? data.fiducial.count : 0;
+      fidContent.innerHTML = `
+        <span class="badge fail">✗ Marcadores nao encontrados (${count}/4)</span>
+        <p style="margin-top:10px;font-size:0.82rem;color:#94a3b8;">
+          Possíveis causas:<br>
+          • Foto com angulo muito inclinado<br>
+          • Cantos cortados ou com sombra<br>
+          • Resolucao muito baixa
+        </p>`;
+    }
+
+    // Debug image
+    if (data.debug_image) {
+      debugImg.src = `data:image/png;base64,${data.debug_image}`;
+      debugWrapper.style.display = 'block';
+    } else {
+      debugWrapper.style.display = 'none';
+    }
+  }
+
+  // Testar conexao automaticamente ao carregar
+  window.addEventListener('load', () => btnHealth.click());
+</script>
+</body>
+</html>

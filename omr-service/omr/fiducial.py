@@ -27,9 +27,10 @@ from omr.models import FiducialResult
 logger = logging.getLogger(__name__)
 
 # Area range (in pixels²) for fiducial squares after resizing to width=700.
-# Calibrated from the user-provided script; widen slightly to be robust.
-_MIN_AREA = 100
-_MAX_AREA = 500
+# Answer sheet is ~190mm wide; at 700px that is ~3.7px/mm.
+# 5mm square → ~18.5px side → ~342px². Allow wide margins for photo variance.
+_MIN_AREA = 50
+_MAX_AREA = 3000
 
 # Polygon approximation tolerance
 _POLY_EPSILON = 0.04
@@ -50,18 +51,22 @@ def _order_points(pts: np.ndarray) -> np.ndarray:
     return rect
 
 
-def _find_candidates(thresh: np.ndarray) -> list[tuple[int, int]]:
+def _find_candidates(thresh: np.ndarray, log_areas: bool = False) -> list[tuple[int, int]]:
     """Return centroids of all square-ish contours within the area range."""
     cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     cnts = imutils.grab_contours(cnts)
 
     candidates: list[tuple[int, int]] = []
+    quad_areas: list[float] = []
+
     for c in cnts:
         area = cv2.contourArea(c)
-        if area < _MIN_AREA or area > _MAX_AREA:
-            continue
         peri = cv2.arcLength(c, True)
         approx = cv2.approxPolyDP(c, _POLY_EPSILON * peri, True)
+        if len(approx) == 4:
+            quad_areas.append(area)
+        if area < _MIN_AREA or area > _MAX_AREA:
+            continue
         if len(approx) != 4:
             continue
         M = cv2.moments(c)
@@ -70,6 +75,10 @@ def _find_candidates(thresh: np.ndarray) -> list[tuple[int, int]]:
         cx = int(M["m10"] / M["m00"])
         cy = int(M["m01"] / M["m00"])
         candidates.append((cx, cy))
+
+    if log_areas:
+        quad_areas_sorted = sorted(quad_areas, reverse=True)[:20]
+        logger.debug("Top quad areas (px²): %s", quad_areas_sorted)
 
     return candidates
 
@@ -93,16 +102,29 @@ def detect_fiducials(image: np.ndarray) -> FiducialResult:
     gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
     _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
 
-    candidates = _find_candidates(thresh)
+    candidates = _find_candidates(thresh, log_areas=True)
 
     if len(candidates) != 4:
-        logger.warning("Expected 4 fiducial markers, found %d", len(candidates))
+        logger.warning("Expected 4 fiducial markers, found %d (inverted thresh)", len(candidates))
 
         # Second attempt: try on the raw grayscale (non-inverted)
         _, thresh2 = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-        candidates = _find_candidates(thresh2)
+        candidates = _find_candidates(thresh2, log_areas=True)
 
         if len(candidates) != 4:
+            logger.warning("Expected 4 fiducial markers, found %d (normal thresh)", len(candidates))
+
+            # Third attempt: adaptive threshold (handles uneven lighting)
+            thresh3 = cv2.adaptiveThreshold(
+                gray, 255,
+                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY_INV,
+                blockSize=15, C=4
+            )
+            candidates = _find_candidates(thresh3, log_areas=True)
+
+        if len(candidates) != 4:
+            logger.warning("Expected 4 fiducial markers, found %d (adaptive thresh)", len(candidates))
             return FiducialResult(found=False, count=len(candidates))
 
     pts = np.array(candidates, dtype="float32")
