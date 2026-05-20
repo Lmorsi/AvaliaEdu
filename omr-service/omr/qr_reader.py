@@ -23,21 +23,8 @@ logger = logging.getLogger(__name__)
 _URL_TOKEN_RE = re.compile(r"/s/([A-Za-z0-9_\-]+)")
 
 
-def _try_pyzbar(gray: np.ndarray) -> Optional[str]:
-    """Decode the first QR code found using pyzbar."""
-    try:
-        from pyzbar import pyzbar  # type: ignore
-        decoded = pyzbar.decode(gray)
-        for obj in decoded:
-            if obj.type == "QRCODE":
-                return obj.data.decode("utf-8", errors="replace")
-    except ImportError:
-        logger.warning("pyzbar not available, falling back to OpenCV QR decoder")
-    return None
-
-
-def _try_opencv(gray: np.ndarray) -> Optional[str]:
-    """Decode using OpenCV's built-in QR detector (slower, no external dep)."""
+def _decode_qr(gray: np.ndarray) -> Optional[str]:
+    """Decode QR code using OpenCV's built-in detector."""
     detector = cv2.QRCodeDetector()
     data, _, _ = detector.detectAndDecode(gray)
     return data if data else None
@@ -79,17 +66,16 @@ def read_qr(image: np.ndarray) -> Optional[QRData]:
     Attempt to read a QR code from the given BGR image.
 
     Returns a QRData if a QR code is found, None otherwise.
-    Tries pyzbar first (more robust), then falls back to OpenCV.
+    Uses OpenCV's built-in QR detector with optional preprocessing.
     """
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-    raw = _try_pyzbar(gray) or _try_opencv(gray)
+    raw = _decode_qr(gray)
 
     if not raw:
         # Try with light preprocessing to improve detection on low-contrast images
         blurred = cv2.GaussianBlur(gray, (3, 3), 0)
         _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-        raw = _try_pyzbar(binary) or _try_opencv(binary)
+        raw = _decode_qr(binary)
 
     if not raw:
         return None
