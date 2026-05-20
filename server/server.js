@@ -90,14 +90,21 @@ const generateAnswerSheet = async (finalData) => {
     console.error('Falha ao gerar QR Code', err);
   }
 
+  // ArUco markers (DICT_4X4_50, IDs 0-3, 80x80px PNG) embedded as base64.
+  // TL=ID0, TR=ID1, BL=ID2, BR=ID3 — used by fiducial.py for alignment.
+  const ARUCO_TL = 'iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAAAAACreq1xAAABVklEQVRYCa3BsQ3AQBDDMGn/oZ3WKQxc8aQ8Jo/JY/KYPCaPyWPymDwmj8lj8pg8Jo/JTyhSwiRFfkKREiYp8hOKlDBJkZ9QpIRJivyEIiVMUuQnFClhkiI/oUgJkxT5CUVKmKTITyhSwiRFfkKREiYp8hOKlDBJkZ9QpIRJivyEIiVMUmQLRVooUmQLRVooUmQLRVooUmQLRVooUmQLRVooUmQLRVooUmQLRVooUmQLRVooUmQLRVooUmQLRVooUmQLRVooUmQLRVooUmQLRVooUuQoTFLkKExS5ChMUuQoTFLkKExS5ChMUuQoTFLkKExS5ChMUuQoTFLkKExS5ChMUuQoTFLkKExS5Cg0WeQoNFnkKDRZ5Cg0WeQoNFnkKDRZ5Cg0WeQoNFnkKDRZ5Cg0WeQoNFnkKDRZ5Cg0WeQxeUwek8fkMXlMHpPH5DF5TB6Tx+SxD9qPT1FfMmdGAAAAAElFTkSuQmCC';
+  const ARUCO_TR = 'iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAAAAACreq1xAAABOUlEQVRYCa3BsQ0AMAzDMOn/o93VGbIUIeWYHJNjckyOyTE5JsfkmByTY3JMjskxOSbH5Jgck2NyTI7JMTkmx+SYHJNjMoQPUmQIH6TIED5IkSF8kCJD+CBFhvBBigzhgxQZwgcpMoQPUmQIH6TIED5IkSF8kCJD+CBFhlBkFYoUGUKRVShSZAhFVqFIkSEUWYUiRYZQZBWKFBlCkVUoUmQIRVahSJEhFFmFIkWGUGQVihQZQpFVKFJkCEVWoUiRIRRZhSJFhlBkFYoUGUKRVShSZAhFSmiykSEUKaHJRoZQpIQmGxlCkRKabGQIRUpospEhFCmhyUaGUKSEJhsZQpESmmxkCEVKaLKRIRQpoclGhlCkhCYbGUKREppsZAhFSmiykWNyTI7JMTkmx+SYHJNjckyOyTE59gBxIUNRPphgnAAAAABJRU5ErkJggg==';
+  const ARUCO_BL = 'iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAAAAACreq1xAAABPElEQVRYCa3BsQ3AQBDDMGn/oZ3WKQxc8aQ8Jo/JY/KYPCaPyWPymDwmj8lj8pg8Jo/JUZikyFGYpMhRmKTIUZikyFGYpMhRmKTIUZikyFGYpMhRmKTIUZikyFGYpMhRmKTIUZikyFGYpMhRmKTIUZikyFGYpMhRmKTIUZikyFGYpMhRmKTIUZikyFGYpMhRmKTIUZikyFGYpMhRaLLIUWiyyFFosshRaLLIUWiyyFFosshRaLLIUWiyyFFosshRaLLIUWiyyFFosshRaLLIUWiyyE9YpIUiRX7CIi0UKfITFmmhSJGfsEgLRYr8hEVaKFLkJyzSQpEiP2GRFooU+QmLtFCkyE9YpIUiRX7CIi0UKfITFmmhSJGfsEgLRYr8hEVaKFLkMXlMHpPH5DF5TB6Tx+QxeUwek8fksQ9WwEJRKD0mKQAAAABJRU5ErkJggg==';
+  const ARUCO_BR = 'iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAAAAACreq1xAAABVklEQVRYCa3BsQ3AQBDDMGn/oZ3WXxhIcaQck2NyTI7JMTkmx+SYHJNjckyOyTE5Jo9QZApFijxCkSkUKfIIRaZQpMgjFJlCkSKPUGQKRYo8QpEpFCnyCEWmUKTIIxSZQpEij1BkCkWKPEKRKRQp8ghFplCkyCMUmUKRIo9QZApFijxCkSkUKfIIRaZQpMgjFJlCkSKPUGQKRYo8QpEpFCnyCEWmUKTIIxSZQpEij1BkCkWKPEKRKRQp8ghFplCkyCMUmUKRIo9QZApFijxCkSkUKbKFIv/IFor8I1so8o9socg/soUi/8gWivwjWyjyj2yhyD+yhSL/yBaK/CNbKPKPbKHIP7KFIv/IFor8I1uYZJEtTLLIFiZZZAuTLLKFSRbZwiSLbGGSRbYwySJbmGSRLUyyyBYmWWQLkyyyhUkWOSbH5Jgck2NyTI7JMTkmx+SYHJNjHy1+T1Gj/ihKAAAAAElFTkSuQmCC';
+
   // 3. CONSTRUIR O HTML DO GABARITO - 4 COLUNAS COM MÁXIMO 15 QUESTÕES CADA
   let answerSheetHTML = `
-    <div style="position: relative; padding: 8mm; border: 1.5px solid #333; margin-top: 5mm; page-break-inside: avoid;">
-      <!-- 4 Marcadores de Ancoragem (Fiducial Markers) nos cantos -->
-      <div style="position: absolute; top: 2mm; left: 2mm; width: 5mm; height: 5mm; background-color: #000;"></div>
-      <div style="position: absolute; top: 2mm; right: 2mm; width: 5mm; height: 5mm; background-color: #000;"></div>
-      <div style="position: absolute; bottom: 2mm; left: 2mm; width: 5mm; height: 5mm; background-color: #000;"></div>
-      <div style="position: absolute; bottom: 2mm; right: 2mm; width: 5mm; height: 5mm; background-color: #000;"></div>
+    <div style="position: relative; padding: 8mm 8mm 8mm 8mm; margin-top: 5mm; page-break-inside: avoid;">
+      <!-- 4 ArUco Markers nos cantos (DICT_4X4_50: TL=ID0, TR=ID1, BL=ID2, BR=ID3) -->
+      <img src="data:image/png;base64,${ARUCO_TL}" style="position: absolute; top: 1mm; left: 1mm; width: 8mm; height: 8mm; image-rendering: pixelated;" />
+      <img src="data:image/png;base64,${ARUCO_TR}" style="position: absolute; top: 1mm; right: 1mm; width: 8mm; height: 8mm; image-rendering: pixelated;" />
+      <img src="data:image/png;base64,${ARUCO_BL}" style="position: absolute; bottom: 1mm; left: 1mm; width: 8mm; height: 8mm; image-rendering: pixelated;" />
+      <img src="data:image/png;base64,${ARUCO_BR}" style="position: absolute; bottom: 1mm; right: 1mm; width: 8mm; height: 8mm; image-rendering: pixelated;" />
 
       <!-- Cabeçalho do Gabarito com QR Code -->
       <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #ccc; padding-bottom: 3mm; margin-bottom: 3mm;">

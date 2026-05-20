@@ -56,7 +56,8 @@ app.add_middleware(
 def health():
     opencv_ok = True
     try:
-        cv2.__version__
+        # Verify opencv-contrib (ArUco) is available
+        _ = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
     except Exception:
         opencv_ok = False
 
@@ -69,7 +70,7 @@ def health():
     return HealthResponse(
         status="ok",
         service="avaliaedu-omr",
-        version="0.1.0",
+        version="0.2.0",
         opencv_available=opencv_ok,
         pyzbar_available=pyzbar_ok,
     )
