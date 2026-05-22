@@ -18,17 +18,7 @@ logger = logging.getLogger(__name__)
 def _order_corner_points(pts: np.ndarray) -> np.ndarray:
     """
     Order four corner points as: top-left, top-right, bottom-right, bottom-left.
-
-    Uses centroid-based ordering:
-    1. Compute centroid of all 4 points
-    2. For each point, calculate angle from centroid
-    3. Sort by angle starting from top-left
-
-    Args:
-        pts: Array of shape (4, 2) with corner coordinates
-
-    Returns:
-        Ordered points as [TL, TR, BR, BL]
+    Uses centroid-based angle calculation for robust ordering in any orientation.
     """
     rect = np.zeros((4, 2), dtype="float32")
 
@@ -36,17 +26,17 @@ def _order_corner_points(pts: np.ndarray) -> np.ndarray:
     cx = pts[:, 0].mean()
     cy = pts[:, 1].mean()
 
-    # Calculate angles from centroid to each point
+    # Calculate angles from centroid to each point (-π to π)
     angles = np.arctan2(pts[:, 1] - cy, pts[:, 0] - cx)
 
-    # Sort by angle to get points in counter-clockwise order
+    # Sort by angle: start from -π (left) and go counter-clockwise
     sorted_indices = np.argsort(angles)
     sorted_pts = pts[sorted_indices]
 
-    # Identify which sorted point is TL (top-left = minimum y, minimum x)
+    # Find top point (minimum y) among sorted points
     min_y_idx = np.argmin(sorted_pts[:, 1])
 
-    # Rotate sorted points so TL is first
+    # Rotate array so top-left is first, then clockwise: TL, TR, BR, BL
     rect = np.roll(sorted_pts, -min_y_idx, axis=0)
 
     return rect
