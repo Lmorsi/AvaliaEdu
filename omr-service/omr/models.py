@@ -30,6 +30,8 @@ class ScanResponse(BaseModel):
     error: Optional[str] = None
     # base64-encoded annotated image for debugging (only when debug=true)
     debug_image: Optional[str] = None
+    # base64-encoded perspective-corrected image (only when fiducials found)
+    corrected_image: Optional[str] = None
 
 
 class ScanErrorResponse(BaseModel):

@@ -5,6 +5,7 @@ Phases implemented:
   1. Health check endpoint
   2. QR code reading (token extraction)
   3. Fiducial marker detection (alignment preparation)
+  4. Perspective correction (using detected markers)
 """
 
 import base64
@@ -26,6 +27,7 @@ from omr.models import (
     ScanErrorResponse,
     ScanResponse,
 )
+from omr.perspective import correct_perspective
 from omr.qr_reader import read_qr
 
 logging.basicConfig(
@@ -70,7 +72,7 @@ def health():
     return HealthResponse(
         status="ok",
         service="avaliaedu-omr",
-        version="0.2.0",
+        version="0.3.0",
         opencv_available=opencv_ok,
         pyzbar_available=pyzbar_ok,
     )
@@ -86,12 +88,13 @@ async def scan(
     debug: bool = Query(False, description="Include annotated debug image in response"),
 ):
     """
-    Phase 2 + 3 endpoint: reads the QR code and detects the four corner
-    fiducial markers.  Does NOT yet read bubbles (Phase 4+).
+    Phase 2 + 3 + 4 endpoint: reads the QR code, detects the four corner
+    fiducial markers, and applies perspective correction.
 
     Returns:
       - qr: extracted QR data and parsed token
       - fiducial: whether the 4 corner markers were found and their coordinates
+      - corrected_image: base64-encoded perspective-corrected image (when fiducials found)
       - debug_image: base64-encoded annotated PNG (only when debug=true)
     """
     raw = await photo.read()
@@ -123,6 +126,15 @@ async def scan(
     fiducial_result: FiducialResult = detect_fiducials(image)
     logger.info("Fiducial detection: found=%s  count=%d", fiducial_result.found, fiducial_result.count)
 
+    # Phase 4 -- Perspective correction
+    corrected_b64: str | None = None
+    if fiducial_result.found and fiducial_result.corners:
+        corrected = correct_perspective(image, fiducial_result.corners)
+        if corrected is not None:
+            _, buf = cv2.imencode(".png", corrected)
+            corrected_b64 = base64.b64encode(buf.tobytes()).decode("ascii")
+            logger.info("Perspective correction successful")
+
     # Optional debug image
     debug_b64: str | None = None
     if debug:
@@ -134,5 +146,6 @@ async def scan(
         success=True,
         qr=qr_data,
         fiducial=fiducial_result,
+        corrected_image=corrected_b64,
         debug_image=debug_b64,
     )
