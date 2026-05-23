@@ -31,14 +31,29 @@ _EXPECTED_IDS = {0, 1, 2, 3}
 
 
 def _order_points(pts: np.ndarray) -> np.ndarray:
-    """Order four points as: top-left, top-right, bottom-right, bottom-left."""
+    """
+    Order four points as: top-left, top-right, bottom-right, bottom-left.
+    Uses centroid-based angle calculation for robust ordering in any orientation.
+    """
     rect = np.zeros((4, 2), dtype="float32")
-    s = pts.sum(axis=1)
-    rect[0] = pts[np.argmin(s)]   # top-left: smallest x+y
-    rect[2] = pts[np.argmax(s)]   # bottom-right: largest x+y
-    diff = np.diff(pts, axis=1)
-    rect[1] = pts[np.argmin(diff)]  # top-right: smallest y-x
-    rect[3] = pts[np.argmax(diff)]  # bottom-left: largest y-x
+
+    # Compute centroid
+    cx = pts[:, 0].mean()
+    cy = pts[:, 1].mean()
+
+    # Calculate angles from centroid to each point (-π to π)
+    angles = np.arctan2(pts[:, 1] - cy, pts[:, 0] - cx)
+
+    # Sort by angle: start from -π (left) and go counter-clockwise
+    sorted_indices = np.argsort(angles)
+    sorted_pts = pts[sorted_indices]
+
+    # Find top point (minimum y) among sorted points
+    min_y_idx = np.argmin(sorted_pts[:, 1])
+
+    # Rotate array so top-left is first, then clockwise: TL, TR, BR, BL
+    rect = np.roll(sorted_pts, -min_y_idx, axis=0)
+
     return rect
 
 

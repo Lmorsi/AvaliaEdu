@@ -6,6 +6,7 @@ Phases implemented:
   2. QR code reading (token extraction)
   3. Fiducial marker detection (alignment preparation)
   4. Perspective correction (using detected markers)
+  5. Bubble reader (bubble detection and classification)
 """
 
 import base64
@@ -19,8 +20,10 @@ from fastapi import FastAPI, File, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from omr.bubble import detect_bubbles, draw_bubbles
 from omr.fiducial import detect_fiducials, draw_fiducials
 from omr.models import (
+    BubbleResult,
     FiducialResult,
     HealthResponse,
     QRData,
@@ -128,17 +131,29 @@ async def scan(
 
     # Phase 4 -- Perspective correction
     corrected_b64: str | None = None
+    corrected_image: np.ndarray | None = None
     if fiducial_result.found and fiducial_result.corners:
-        corrected = correct_perspective(image, fiducial_result.corners)
-        if corrected is not None:
-            _, buf = cv2.imencode(".png", corrected)
+        corrected_image = correct_perspective(image, fiducial_result.corners)
+        if corrected_image is not None:
+            _, buf = cv2.imencode(".png", corrected_image)
             corrected_b64 = base64.b64encode(buf.tobytes()).decode("ascii")
             logger.info("Perspective correction successful")
+
+    # Phase 5 -- Bubble reader
+    bubble_result: BubbleResult | None = None
+    if corrected_image is not None:
+        bubble_result = detect_bubbles(corrected_image)
+        if bubble_result.found:
+            logger.info("Found bubbles: %d rows", len(bubble_result.grids))
+        else:
+            logger.warning("No bubbles detected")
 
     # Optional debug image
     debug_b64: str | None = None
     if debug:
         annotated = draw_fiducials(image, fiducial_result)
+        if corrected_image is not None and bubble_result and bubble_result.found:
+            annotated = draw_bubbles(corrected_image, bubble_result)
         _, buf = cv2.imencode(".png", annotated)
         debug_b64 = base64.b64encode(buf.tobytes()).decode("ascii")
 
@@ -146,6 +161,7 @@ async def scan(
         success=True,
         qr=qr_data,
         fiducial=fiducial_result,
+        bubbles=bubble_result,
         corrected_image=corrected_b64,
         debug_image=debug_b64,
     )

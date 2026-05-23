@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Any
 
 
 class HealthResponse(BaseModel):
@@ -23,10 +23,21 @@ class FiducialResult(BaseModel):
     corners: Optional[list[list[float]]] = None
 
 
+class BubbleGrid(BaseModel):
+    row: int
+    bubbles: list[dict[str, Any]]  # col, x, y, radius, fill_percentage, marked
+
+
+class BubbleResult(BaseModel):
+    found: bool
+    grids: list[BubbleGrid] = []
+
+
 class ScanResponse(BaseModel):
     success: bool
     qr: Optional[QRData] = None
     fiducial: Optional[FiducialResult] = None
+    bubbles: Optional[BubbleResult] = None
     error: Optional[str] = None
     # base64-encoded annotated image for debugging (only when debug=true)
     debug_image: Optional[str] = None

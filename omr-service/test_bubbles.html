@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste - Leitor de Bolhas</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 1200px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 28px;
+        }
+
+        .upload-section {
+            margin-bottom: 40px;
+            padding: 30px;
+            border: 2px dashed #667eea;
+            border-radius: 8px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .upload-section:hover {
+            border-color: #764ba2;
+            background: #f8f9ff;
+        }
+
+        .upload-section input[type="file"] {
+            display: none;
+        }
+
+        .upload-button {
+            display: inline-block;
+            padding: 12px 32px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: background 0.3s ease;
+        }
+
+        .upload-button:hover {
+            background: #764ba2;
+        }
+
+        .upload-button:active {
+            transform: scale(0.98);
+        }
+
+        .file-name {
+            margin-top: 10px;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 30px;
+        }
+
+        @media (max-width: 768px) {
+            .results-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .result-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            display: none;
+        }
+
+        .result-card.active {
+            display: block;
+        }
+
+        .result-card h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .result-card img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 6px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .bubble-grid {
+            margin-top: 20px;
+        }
+
+        .bubble-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .bubble-row-label {
+            font-weight: 600;
+            min-width: 30px;
+            color: #667eea;
+        }
+
+        .bubble-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+        }
+
+        .bubble-item.marked {
+            background: #c8e6c9;
+            border-color: #81c784;
+            color: #2e7d32;
+            font-weight: 600;
+        }
+
+        .bubble-item.unmarked {
+            background: #fff3e0;
+            border-color: #ffb74d;
+            color: #e65100;
+        }
+
+        .bubble-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .bubble-item.marked .bubble-indicator {
+            background: #2e7d32;
+        }
+
+        .bubble-item.unmarked .bubble-indicator {
+            background: #e65100;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 30px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            display: none;
+            background: #ffebee;
+            border: 1px solid #ef5350;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+        }
+
+        .error.active {
+            display: block;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .stat-card {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Teste de Leitura de Bolhas</h1>
+
+        <div class="upload-section">
+            <label for="photo-input" class="upload-button">
+                Selecionar Foto
+            </label>
+            <input type="file" id="photo-input" accept="image/*" />
+            <div class="file-name" id="file-name"></div>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processando imagem...</p>
+        </div>
+
+        <div class="error" id="error"></div>
+
+        <div class="results-grid">
+            <!-- Original com marcadores -->
+            <div class="result-card active" id="debug-card">
+                <h3>Imagem com Marcadores</h3>
+                <img id="debug-image" src="" alt="Debug image" />
+            </div>
+
+            <!-- Perspectiva corrigida -->
+            <div class="result-card active" id="corrected-card">
+                <h3>Imagem Corrigida</h3>
+                <img id="corrected-image" src="" alt="Corrected image" />
+            </div>
+
+            <!-- Resultado das bolhas -->
+            <div class="result-card active" id="bubbles-card">
+                <h3>Bolhas Detectadas</h3>
+                <div class="stats" id="stats"></div>
+                <div class="bubble-grid" id="bubble-grid"></div>
+            </div>
+
+            <!-- Dados brutos -->
+            <div class="result-card active" id="raw-card">
+                <h3>Dados Brutos (JSON)</h3>
+                <pre id="raw-data" style="
+                    background: #f5f5f5;
+                    padding: 15px;
+                    border-radius: 6px;
+                    overflow-x: auto;
+                    font-size: 12px;
+                    max-height: 400px;
+                    overflow-y: auto;
+                "></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000'; // Ajuste conforme necessário
+
+        document.getElementById('photo-input').addEventListener('change', handleFileSelect);
+
+        async function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            document.getElementById('file-name').textContent = `Arquivo: ${file.name}`;
+            document.getElementById('error').classList.remove('active');
+            document.getElementById('loading').classList.add('active');
+
+            try {
+                const formData = new FormData();
+                formData.append('photo', file);
+
+                const response = await fetch(`${API_BASE}/api/omr/scan?debug=true`, {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                displayResults(data);
+            } catch (error) {
+                showError(error.message);
+            } finally {
+                document.getElementById('loading').classList.remove('active');
+            }
+        }
+
+        function displayResults(data) {
+            // Debug image
+            if (data.debug_image) {
+                document.getElementById('debug-image').src = `data:image/png;base64,${data.debug_image}`;
+            } else {
+                document.getElementById('debug-card').style.display = 'none';
+            }
+
+            // Corrected image
+            if (data.corrected_image) {
+                document.getElementById('corrected-image').src = `data:image/png;base64,${data.corrected_image}`;
+            } else {
+                document.getElementById('corrected-card').style.display = 'none';
+            }
+
+            // Bubbles
+            if (data.bubbles && data.bubbles.found) {
+                displayBubbles(data.bubbles);
+            } else {
+                document.getElementById('bubbles-card').style.display = 'none';
+            }
+
+            // Raw data
+            document.getElementById('raw-data').textContent = JSON.stringify(data, null, 2);
+        }
+
+        function displayBubbles(bubbleData) {
+            const statsDiv = document.getElementById('stats');
+            const gridDiv = document.getElementById('bubble-grid');
+
+            let totalBubbles = 0;
+            let markedCount = 0;
+
+            // Clear previous content
+            statsDiv.innerHTML = '';
+            gridDiv.innerHTML = '';
+
+            // Count bubbles
+            for (const grid of bubbleData.grids) {
+                for (const bubble of grid.bubbles) {
+                    totalBubbles++;
+                    if (bubble.marked) markedCount++;
+                }
+            }
+
+            // Display stats
+            statsDiv.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-value">${totalBubbles}</div>
+                    <div class="stat-label">Total de Bolhas</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${markedCount}</div>
+                    <div class="stat-label">Marcadas</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${totalBubbles - markedCount}</div>
+                    <div class="stat-label">Não Marcadas</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${bubbleData.grids.length}</div>
+                    <div class="stat-label">Linhas</div>
+                </div>
+            `;
+
+            // Display bubble grid
+            for (const grid of bubbleData.grids) {
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'bubble-row';
+
+                const label = document.createElement('span');
+                label.className = 'bubble-row-label';
+                label.textContent = `L${grid.row + 1}:`;
+                rowDiv.appendChild(label);
+
+                for (const bubble of grid.bubbles) {
+                    const item = document.createElement('span');
+                    item.className = `bubble-item ${bubble.marked ? 'marked' : 'unmarked'}`;
+
+                    const fillPct = (bubble.fill_percentage * 100).toFixed(0);
+                    item.innerHTML = `
+                        <span class="bubble-indicator"></span>
+                        <span>Col ${bubble.col + 1} (${fillPct}%)</span>
+                    `;
+
+                    rowDiv.appendChild(item);
+                }
+
+                gridDiv.appendChild(rowDiv);
+            }
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = `Erro: ${message}`;
+            errorDiv.classList.add('active');
+        }
+    </script>
+</body>
+</html>
