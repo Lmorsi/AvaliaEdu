@@ -17,7 +17,7 @@ from omr.models import BubbleResult, BubbleGrid
 logger = logging.getLogger(__name__)
 
 
-def _find_bubbles(gray: np.ndarray, min_area: int = 50, max_area: int = 8000) -> list[tuple[int, int, int]]:
+def _find_bubbles(gray: np.ndarray, min_area: int = 60, max_area: int = 4000) -> list[tuple[int, int, int]]:
     """
     Find circular bubble regions in a grayscale image.
 
@@ -46,7 +46,7 @@ def _find_bubbles(gray: np.ndarray, min_area: int = 50, max_area: int = 8000) ->
 
         # Fit circle
         (cx, cy), radius = cv2.minEnclosingCircle(contour)
-        if radius < 8:
+        if radius < 9:
             continue
 
         # Check circularity: 4π * area / perimeter²
@@ -55,11 +55,11 @@ def _find_bubbles(gray: np.ndarray, min_area: int = 50, max_area: int = 8000) ->
             continue
 
         circularity = 4 * np.pi * area / (perimeter * perimeter)
-        if circularity < 0.65:  # Relaxed circularity threshold
+        if circularity < 0.68:  # Stricter circularity to filter noise
             continue
 
         bubbles.append((int(cx), int(cy), int(radius)))
-        logger.debug(f"Bubble found: cx={cx:.1f}, cy={cy:.1f}, r={radius:.1f}, area={area:.1f}, circ={circularity:.2f}")
+        logger.debug(f"Bubble: cx={cx:.0f}, cy={cy:.0f}, r={radius:.0f}, area={area:.0f}, circ={circularity:.2f}")
 
     return bubbles
 
@@ -89,12 +89,13 @@ def _calculate_fill_percentage(
 
 
 def _cluster_bubbles(
-    bubbles: list[tuple[int, int, int]], tolerance: int = 30
+    bubbles: list[tuple[int, int, int]], tolerance: int = 40
 ) -> list[list[tuple[int, int, int]]]:
     """
     Group bubbles into grid rows based on y-coordinate proximity.
 
     Bubbles within `tolerance` pixels vertically are grouped into rows.
+    Filters out outliers (bubbles too far above/below the main content).
     """
     if not bubbles:
         return []
@@ -102,10 +103,23 @@ def _cluster_bubbles(
     # Sort by y-coordinate
     sorted_bubbles = sorted(bubbles, key=lambda b: b[1])
 
-    rows = []
-    current_row = [sorted_bubbles[0]]
+    # Find the median y-position to filter outliers
+    y_values = [b[1] for b in sorted_bubbles]
+    median_y = sorted(y_values)[len(y_values) // 2]
 
-    for bubble in sorted_bubbles[1:]:
+    # Filter bubbles that are too far from median (outliers)
+    max_y_deviation = 500  # Allow bubbles up to 500px from median
+    filtered_bubbles = [b for b in sorted_bubbles if abs(b[1] - median_y) < max_y_deviation]
+
+    logger.info(f"Filtered bubbles: {len(sorted_bubbles)} -> {len(filtered_bubbles)} (median_y={median_y})")
+
+    if not filtered_bubbles:
+        return []
+
+    rows = []
+    current_row = [filtered_bubbles[0]]
+
+    for bubble in filtered_bubbles[1:]:
         if abs(bubble[1] - current_row[0][1]) <= tolerance:
             current_row.append(bubble)
         else:
