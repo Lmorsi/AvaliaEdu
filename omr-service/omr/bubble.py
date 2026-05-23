@@ -17,21 +17,19 @@ from omr.models import BubbleResult, BubbleGrid
 logger = logging.getLogger(__name__)
 
 
-def _find_bubbles(gray: np.ndarray, min_area: int = 60, max_area: int = 4000) -> list[tuple[int, int, int]]:
+def _find_bubbles(gray: np.ndarray, min_area: int = 50, max_area: int = 3500) -> list[tuple[int, int, int]]:
     """
     Find circular bubble regions in a grayscale image.
 
     Returns list of (cx, cy, radius) for each detected bubble.
     Uses contour detection and circularity filtering.
     """
-    # Apply adaptive thresholding for better contrast
-    thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                    cv2.THRESH_BINARY_INV, 21, 5)
+    # Apply Otsu's thresholding for better separation
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
     # Apply morphological operations to enhance circles
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-    gray_processed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
-    gray_processed = cv2.morphologyEx(gray_processed, cv2.MORPH_OPEN, kernel)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    gray_processed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
 
     # Find contours
     contours, _ = cv2.findContours(gray_processed, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
@@ -46,7 +44,7 @@ def _find_bubbles(gray: np.ndarray, min_area: int = 60, max_area: int = 4000) ->
 
         # Fit circle
         (cx, cy), radius = cv2.minEnclosingCircle(contour)
-        if radius < 9:
+        if radius < 8:
             continue
 
         # Check circularity: 4π * area / perimeter²
@@ -55,7 +53,7 @@ def _find_bubbles(gray: np.ndarray, min_area: int = 60, max_area: int = 4000) ->
             continue
 
         circularity = 4 * np.pi * area / (perimeter * perimeter)
-        if circularity < 0.68:  # Stricter circularity to filter noise
+        if circularity < 0.65:
             continue
 
         bubbles.append((int(cx), int(cy), int(radius)))
@@ -89,13 +87,12 @@ def _calculate_fill_percentage(
 
 
 def _cluster_bubbles(
-    bubbles: list[tuple[int, int, int]], tolerance: int = 40
+    bubbles: list[tuple[int, int, int]], tolerance: int = 35
 ) -> list[list[tuple[int, int, int]]]:
     """
     Group bubbles into grid rows based on y-coordinate proximity.
 
     Bubbles within `tolerance` pixels vertically are grouped into rows.
-    Filters out outliers (bubbles too far above/below the main content).
     """
     if not bubbles:
         return []
@@ -103,30 +100,29 @@ def _cluster_bubbles(
     # Sort by y-coordinate
     sorted_bubbles = sorted(bubbles, key=lambda b: b[1])
 
-    # Find the median y-position to filter outliers
-    y_values = [b[1] for b in sorted_bubbles]
-    median_y = sorted(y_values)[len(y_values) // 2]
-
-    # Filter bubbles that are too far from median (outliers)
-    max_y_deviation = 500  # Allow bubbles up to 500px from median
-    filtered_bubbles = [b for b in sorted_bubbles if abs(b[1] - median_y) < max_y_deviation]
-
-    logger.info(f"Filtered bubbles: {len(sorted_bubbles)} -> {len(filtered_bubbles)} (median_y={median_y})")
-
-    if not filtered_bubbles:
-        return []
+    logger.info(f"Clustering {len(sorted_bubbles)} bubbles with tolerance={tolerance}")
 
     rows = []
-    current_row = [filtered_bubbles[0]]
+    current_row = [sorted_bubbles[0]]
 
-    for bubble in filtered_bubbles[1:]:
+    for bubble in sorted_bubbles[1:]:
+        # If bubble is close to current row (within tolerance), add to row
         if abs(bubble[1] - current_row[0][1]) <= tolerance:
             current_row.append(bubble)
         else:
-            rows.append(sorted(current_row, key=lambda b: b[0]))  # Sort by x within row
+            # Start a new row
+            if len(current_row) > 0:
+                rows.append(sorted(current_row, key=lambda b: b[0]))  # Sort by x within row
             current_row = [bubble]
 
-    rows.append(sorted(current_row, key=lambda b: b[0]))
+    # Don't forget the last row
+    if len(current_row) > 0:
+        rows.append(sorted(current_row, key=lambda b: b[0]))
+
+    logger.info(f"Clustered into {len(rows)} rows")
+    for i, row in enumerate(rows):
+        logger.debug(f"Row {i}: {len(row)} bubbles, y_positions: {[b[1] for b in row]}")
+
     return rows
 
 
@@ -152,7 +148,8 @@ def detect_bubbles(
 
     # Convert to grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    logger.info("Image shape: %dx%d", gray.shape[1], gray.shape[0])
+    height, width = gray.shape
+    logger.info("Image shape: %dx%d (H=%d, W=%d)", width, height, height, width)
 
     # Find all bubbles
     bubbles = _find_bubbles(gray)
@@ -161,6 +158,21 @@ def detect_bubbles(
         return BubbleResult(found=False, grids=[])
 
     logger.info("Found %d bubble candidates", len(bubbles))
+
+    # Filter bubbles that are outside image bounds (should not happen but safety check)
+    valid_bubbles = []
+    for cx, cy, r in bubbles:
+        if cx < 0 or cy < 0 or cx >= width or cy >= height:
+            logger.warning(f"Bubble at ({cx}, {cy}) outside image bounds [{width}x{height}], skipping")
+            continue
+        valid_bubbles.append((cx, cy, r))
+
+    if not valid_bubbles:
+        logger.warning("All bubble candidates were outside image bounds")
+        return BubbleResult(found=False, grids=[])
+
+    bubbles = valid_bubbles
+    logger.info("After filtering: %d valid bubbles", len(bubbles))
 
     # Cluster bubbles into rows
     rows = _cluster_bubbles(bubbles)
