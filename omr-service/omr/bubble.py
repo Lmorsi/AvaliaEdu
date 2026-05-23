@@ -17,19 +17,26 @@ from omr.models import BubbleResult, BubbleGrid
 logger = logging.getLogger(__name__)
 
 
-def _find_bubbles(gray: np.ndarray, min_area: int = 30, max_area: int = 5000) -> list[tuple[int, int, int]]:
+def _find_bubbles(gray: np.ndarray, min_area: int = 50, max_area: int = 8000) -> list[tuple[int, int, int]]:
     """
     Find circular bubble regions in a grayscale image.
 
     Returns list of (cx, cy, radius) for each detected bubble.
     Uses contour detection and circularity filtering.
     """
+    # Apply adaptive thresholding for better contrast
+    thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                    cv2.THRESH_BINARY_INV, 21, 5)
+
     # Apply morphological operations to enhance circles
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-    gray_processed = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    gray_processed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+    gray_processed = cv2.morphologyEx(gray_processed, cv2.MORPH_OPEN, kernel)
 
     # Find contours
     contours, _ = cv2.findContours(gray_processed, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+    logger.info("Found %d contours total", len(contours))
 
     bubbles = []
     for contour in contours:
@@ -39,7 +46,7 @@ def _find_bubbles(gray: np.ndarray, min_area: int = 30, max_area: int = 5000) ->
 
         # Fit circle
         (cx, cy), radius = cv2.minEnclosingCircle(contour)
-        if radius < 5:
+        if radius < 8:
             continue
 
         # Check circularity: 4π * area / perimeter²
@@ -48,10 +55,11 @@ def _find_bubbles(gray: np.ndarray, min_area: int = 30, max_area: int = 5000) ->
             continue
 
         circularity = 4 * np.pi * area / (perimeter * perimeter)
-        if circularity < 0.7:  # Only accept circular shapes
+        if circularity < 0.65:  # Relaxed circularity threshold
             continue
 
         bubbles.append((int(cx), int(cy), int(radius)))
+        logger.debug(f"Bubble found: cx={cx:.1f}, cy={cy:.1f}, r={radius:.1f}, area={area:.1f}, circ={circularity:.2f}")
 
     return bubbles
 
@@ -110,8 +118,8 @@ def _cluster_bubbles(
 
 def detect_bubbles(
     image: np.ndarray,
-    fill_threshold: int = 127,
-    marked_percentage: float = 0.4,
+    fill_threshold: int = 150,
+    marked_percentage: float = 0.35,
 ) -> BubbleResult:
     """
     Detect and classify bubbles as marked or unmarked.
@@ -125,10 +133,12 @@ def detect_bubbles(
         BubbleResult with grid of marked bubbles
     """
     if image is None or image.size == 0:
+        logger.error("Image is empty or None")
         return BubbleResult(found=False, grids=[])
 
     # Convert to grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    logger.info("Image shape: %dx%d", gray.shape[1], gray.shape[0])
 
     # Find all bubbles
     bubbles = _find_bubbles(gray)
@@ -140,6 +150,7 @@ def detect_bubbles(
 
     # Cluster bubbles into rows
     rows = _cluster_bubbles(bubbles)
+    logger.info("Clustered into %d rows", len(rows))
 
     # Classify each bubble as marked/unmarked
     grids = []
@@ -157,6 +168,8 @@ def detect_bubbles(
                 "fill_percentage": fill_pct,
                 "marked": is_marked,
             })
+
+            logger.info(f"Row {row_idx}, Col {col_idx}: fill={fill_pct:.2%}, marked={is_marked}")
 
         grids.append(BubbleGrid(row=row_idx, bubbles=grid_row))
 
