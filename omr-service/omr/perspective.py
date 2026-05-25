@@ -1,7 +1,7 @@
 """
 Perspective correction using fiducial markers.
 
-Given the four corner coordinates of ArUco markers (TL, TR, BR, BL),
+Given the four corner coordinates from L-shaped side markers (LT, RT, RB, LB),
 compute a perspective transformation that "warps" the original image
 to a frontal, axis-aligned view.
 """

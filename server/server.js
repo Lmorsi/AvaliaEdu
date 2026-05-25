@@ -1,4 +1,4 @@
-// server.js - VERSÃO CORRIGIDA COM ARUCO MARKERS VÁLIDOS
+// server.js - VERSÃO ULTRA ROBUSTA PARA SESSION CLOSED
 
 const express = require('express');
 const cors = require('cors');
@@ -14,34 +14,20 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-// ============================================
-// M A R C A D O R E S   A R U C O   V Á L I D O S
-// ============================================
-// Gerados com padrão DICT_4X4_50 (IDs 0, 1, 2, 3)
-// Tamanho: 400x400 pixels em PNG de alta qualidade
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'OK', 
+    message: 'Servidor Puppeteer funcionando!',
+    timestamp: new Date().toISOString()
+  });
+});
 
-const ARUCO_MARKERS = {
-  // ID 0 - Canto Superior Esquerdo (TL)
-  TL: 'iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAJQSURBVHgB7d2xUcMwFAbgp7JNlI6mgIp0FJQew1E6WgqWgI6Cko6CMh1FBUwFjqLS+Z7vzpKtb/nzW7J8L71eAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//8=',
-
-  // ID 1 - Canto Superior Direito (TR)
-  TR: 'iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAJQSURBVHgB7d2xUcMwFAbgp7JNlI6mgIp0FJQew1E6WgqWgI6Cko6CMh1FBUwFjqLS+Z7vzpKtb/nzW7J8L71eAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//8=',
-
-  // ID 2 - Canto Inferior Esquerdo (BL)
-  BL: 'iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAJQSURBVHgB7d2xUcMwFAbgp7JNlI6mgIp0FJQew1E6WgqWgI6Cko6CMh1FBUwFjqLS+Z7vzpKtb/nzW7J8L71eAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//8=',
-
-  // ID 3 - Canto Inferior Direito (BR)
-  BR: 'iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAJQSURBVHgB7d2xUcMwFAbgp7JNlI6mgIp0FJQew1E6WgqWgI6Cko6CMh1FBUwFjqLS+Z7vzpKtb/nzW7J8L71eAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//8='
-};
-
-// ============================================
-// G E R A Ç Ã O   D O   H T M L
-// ============================================
+// --- FUNÇÕES DE GERAÇÃO DE HTML (DIVIDIDAS) ---
 
 const generateAnswerSheet = async (finalData) => {
   const { selectedItems, assessmentId, studentId, nomeAvaliacao, studentToken, qrCodeSize } = finalData;
   const qrDisplaySize = qrCodeSize || 35;
-  
   if (!selectedItems || selectedItems.length === 0) {
     return '';
   }
@@ -76,6 +62,9 @@ const generateAnswerSheet = async (finalData) => {
   }).filter(q => q !== null);
 
   // 2. GERAR O QR CODE ESPECÍFICO
+  // Se studentToken for uma URL (deep link), usar diretamente para que a câmera
+  // do celular abra o site automaticamente sem precisar de app.
+  // Caso contrário, embrulhar em JSON com gabarito (formato legado).
   const isUrl = studentToken && (studentToken.startsWith('http://') || studentToken.startsWith('https://'));
   const qrCodeData = isUrl
     ? studentToken
@@ -101,14 +90,31 @@ const generateAnswerSheet = async (finalData) => {
     console.error('Falha ao gerar QR Code', err);
   }
 
+  // L-shaped fiducial markers on the LEFT and RIGHT sides of the answer sheet.
+  // Each marker is a solid black "L" shape (two perpendicular bars).
+  // Layout: 2 L-markers on the left side, 2 on the right side, at ~30% and ~70% height.
+  // Left markers open rightward (└), right markers open leftward (┌ mirrored = ┘).
+  // Used by fiducial.py for perspective correction — more robust than ArUco.
+  const L_MARKER_LEFT_TOP = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><rect x="0" y="0" width="40" height="8" fill="black"/><rect x="0" y="0" width="8" height="40" fill="black"/></svg>`;
+  const L_MARKER_LEFT_BOTTOM = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><rect x="0" y="32" width="40" height="8" fill="black"/><rect x="0" y="0" width="8" height="40" fill="black"/></svg>`;
+  const L_MARKER_RIGHT_TOP = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><rect x="0" y="0" width="40" height="8" fill="black"/><rect x="32" y="0" width="8" height="40" fill="black"/></svg>`;
+  const L_MARKER_RIGHT_BOTTOM = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><rect x="0" y="32" width="40" height="8" fill="black"/><rect x="32" y="0" width="8" height="40" fill="black"/></svg>`;
+
+  const L_LT_B64 = Buffer.from(L_MARKER_LEFT_TOP).toString('base64');
+  const L_LB_B64 = Buffer.from(L_MARKER_LEFT_BOTTOM).toString('base64');
+  const L_RT_B64 = Buffer.from(L_MARKER_RIGHT_TOP).toString('base64');
+  const L_RB_B64 = Buffer.from(L_MARKER_RIGHT_BOTTOM).toString('base64');
+
   // 3. CONSTRUIR O HTML DO GABARITO - 4 COLUNAS COM MÁXIMO 15 QUESTÕES CADA
   let answerSheetHTML = `
-    <div style="position: relative; padding: 12mm 12mm 10mm 12mm; margin-top: 5mm; page-break-inside: avoid;">
-      <!-- 4 ArUco Markers nos cantos - Tamanho aumentado para 12mm para melhor detecção -->
-      <img src="${ARUCO_MARKERS.TL}" style="position: absolute; top: 3mm; left: 3mm; width: 12mm; height: 12mm; image-rendering: crisp-edges;" />
-      <img src="${ARUCO_MARKERS.TR}" style="position: absolute; top: 3mm; right: 3mm; width: 12mm; height: 12mm; image-rendering: crisp-edges;" />
-      <img src="${ARUCO_MARKERS.BL}" style="position: absolute; bottom: 3mm; left: 3mm; width: 12mm; height: 12mm; image-rendering: crisp-edges;" />
-      <img src="${ARUCO_MARKERS.BR}" style="position: absolute; bottom: 3mm; right: 3mm; width: 12mm; height: 12mm; image-rendering: crisp-edges;" />
+    <div style="position: relative; padding: 12mm 8mm 10mm 8mm; margin-top: 5mm; page-break-inside: avoid;">
+      <!-- 4 L-shaped fiducial markers on left and right sides for perspective correction -->
+      <!-- Left side: top at ~30%, bottom at ~70% -->
+      <img src="data:image/svg+xml;base64,${L_LT_B64}" style="position: absolute; top: 30%; left: 1mm; width: 7mm; height: 7mm; image-rendering: pixelated;" />
+      <img src="data:image/svg+xml;base64,${L_LB_B64}" style="position: absolute; top: 70%; left: 1mm; width: 7mm; height: 7mm; image-rendering: pixelated;" />
+      <!-- Right side: top at ~30%, bottom at ~70% -->
+      <img src="data:image/svg+xml;base64,${L_RT_B64}" style="position: absolute; top: 30%; right: 1mm; width: 7mm; height: 7mm; image-rendering: pixelated;" />
+      <img src="data:image/svg+xml;base64,${L_RB_B64}" style="position: absolute; top: 70%; right: 1mm; width: 7mm; height: 7mm; image-rendering: pixelated;" />
 
       <!-- Cabeçalho do Gabarito com QR Code -->
       <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #ccc; padding-bottom: 3mm; margin-bottom: 3mm;">
@@ -119,14 +125,20 @@ const generateAnswerSheet = async (finalData) => {
           ${qrCodeImageBase64 ? `<img src="${qrCodeImageBase64}" style="width: ${qrDisplaySize}mm; height: ${qrDisplaySize}mm;" alt="QR Code">` : ''}
       </div>
 
-      <!-- Grade de Respostas (4 colunas, máximo 15 questões por coluna) -->
+      <!-- Grade de Respostas (4 colunas, máximo 15 questões por coluna, vertical com opções horizontais) -->
       <div style="display: flex; gap: 4mm; justify-content: space-between;">
   `;
+
+  // 4. GERAR AS BOLHAS DE RESPOSTA
+  // Distribuir questões em colunas: preencher coluna 1 (1-15), depois coluna 2 (16-30), coluna 3 (31-45), coluna 4 (46-60)
+  const maxQuestoesPerColumn = 15;
+  const totalColumns = 4;
 
   // Função para gerar o HTML de uma questão individual
   const generateQuestionBubbles = (item, questionNumber) => {
     let questionHTML = '';
 
+    // Para itens discursivos, apenas mostrar "item discursivo"
     if (item.tipoItem === 'discursiva') {
       questionHTML += `
         <div style="display: flex; align-items: center; margin: 1mm 0; break-inside: avoid;">
@@ -137,6 +149,7 @@ const generateAnswerSheet = async (finalData) => {
       return questionHTML;
     }
 
+    // Para itens de múltipla escolha
     if (item.tipoItem === 'multipla_escolha') {
       const validAlternatives = item.alternativas.filter(alt => alt && alt.trim() !== '');
 
@@ -158,6 +171,7 @@ const generateAnswerSheet = async (finalData) => {
 
       questionHTML += `</div></div>`;
     }
+    // Para itens verdadeiro/falso - UM EMBAIXO DO OUTRO
     else if (item.tipoItem === 'verdadeiro_falso') {
       const todasAfirmativas = [...item.afirmativas, ...(item.afirmativasExtras || [])];
       const afirmativasValidas = todasAfirmativas.filter(afirm => afirm && afirm.trim() !== '');
@@ -191,10 +205,8 @@ const generateAnswerSheet = async (finalData) => {
     return questionHTML;
   };
 
-  // Criar colunas explicitamente
-  const maxQuestoesPerColumn = 15;
-  const totalColumns = 4;
-
+  // Criar colunas explicitamente para garantir distribuição vertical
+  // Coluna 1: 1-15, Coluna 2: 16-30, Coluna 3: 31-45, Coluna 4: 46-60
   for (let col = 0; col < totalColumns; col++) {
     answerSheetHTML += `<div style="flex: 1; display: flex; flex-direction: column;">`;
 
@@ -287,6 +299,246 @@ const generatePageHeader = (finalData) => {
   }
 };
 
+// NOVA FUNÇÃO: Gera apenas o HTML da primeira página (capa e gabarito)
+const generateCoverHTML = async (finalData, quillCSS) => {
+  const coverCSS = `
+    ${quillCSS}
+    @page { size: A4; margin: 7.5mm; }
+    body { font-family: Arial, sans-serif; }
+    
+    .header-standard { border: 1px solid #000; margin-bottom: 4mm; }
+    .header-row { display: flex; border-bottom: 1px solid #000; min-height: 6mm; align-items: center; }
+    .header-row:last-child { border-bottom: none; }
+    .header-cell { padding: 2px 8px; font-size: 14px; display: flex; align-items: center; }
+    .header-cell-full { flex: 1; }
+    .header-cell-split { flex: 1; border-right: 1px solid #000; }
+    .header-cell-date { flex: 0 0 auto; min-width: 120px; padding-left: 8px; }
+    
+    /* Estilos específicos para impressão */
+    @media print {
+      body { 
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      
+      .header-standard { 
+        border: 1px solid #000 !important; 
+      }
+      
+      .header-row { 
+        border-bottom: 1px solid #000 !important; 
+      }
+    }
+  `;
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="UTF-8"><style>${coverCSS}</style></head>
+    <body>
+      ${generatePageHeader(finalData)}
+      <div style="font-weight: bold; margin: 4mm 0; font-size: 14px;">FOLHA DE RESPOSTAS:</div>
+      ${await generateAnswerSheet(finalData)}
+    </body>
+    </html>
+  `;
+};
+
+// NOVA FUNÇÃO: Gera apenas o HTML das páginas de questões
+const generateQuestionsHTML = (finalData, columns, quillCSS) => {
+  const { selectedItems } = finalData;
+
+  // Obter o nome da avaliação ou usar padrão
+  const nomeAvaliacao = finalData.nomeAvaliacao && finalData.nomeAvaliacao.trim()
+    ? finalData.nomeAvaliacao.trim().toUpperCase()
+    : 'QUESTÕES DA AVALIAÇÃO';
+
+  const questionsCSS = `
+    ${quillCSS}
+    @page {
+      size: A4;
+      margin: 8mm 8mm 5mm 8mm;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* Container principal */
+    .questions-container {
+      margin-top: 0;
+    }
+
+    /* Layout de 2 colunas - CSS Multi-column */
+    .questions-container.two-column {
+      column-count: 2;
+      column-gap: 8mm;
+      column-rule: 1px solid #313030ff;
+    }
+
+    /* Layout de 1 coluna */
+    .questions-container.single-column {
+      width: 100%;
+    }
+
+    /* Questão individual */
+    .question {
+      width: 100%;
+      break-inside: avoid;
+      page-break-inside: avoid;
+      -webkit-column-break-inside: avoid;
+      margin-bottom: 2mm;
+      box-sizing: border-box;
+    }
+
+    /* Separador entre questões */
+    .question-separator {
+      border-bottom: 1px solid #858383ff;
+      margin-top: 2mm;
+      margin: 0mm 14mm 0mm 0mm;
+
+    }
+
+    .question:last-child .question-separator {
+      display: none;
+    }
+
+    /* Estilos do editor Quill */
+    .ql-editor img {
+      max-width: 100% !important;
+      height: auto !important;
+      object-fit: contain !important;
+      max-height: 40vh !important;
+    }
+
+    .ql-editor {
+      padding: 0 !important;
+      font-size: 14px;
+      line-height: 1.4;
+      overflow: hidden;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+  `;
+
+  // Função para gerar HTML de uma questão
+  const generateQuestionHTML = (item, questionNumber) => {
+    const isTwo = columns === '2';
+
+    const wrappedTextoItem = item.textoItem ? `
+      <div class="ql-container">
+        <div class="ql-editor">${item.textoItem}</div>
+      </div>
+    ` : '';
+
+    let contentHTML = '';
+    if (item.tipoItem === 'multipla_escolha') {
+      const validAlternatives = item.alternativas.filter(alt => alt && alt.trim() !== '');
+
+      contentHTML = `
+        <div style="margin-left: ${isTwo ? '2.5mm' : '3mm'};">
+          ${validAlternatives.map((alt, altIndex) => `
+              <div style="margin: ${isTwo ? '1mm' : '1mm'} 0; display: flex; align-items: flex-start;">
+                <span style="margin-right: ${isTwo ? '1.5mm' : '2mm'}; font-weight: bold; font-size: ${isTwo ? '14px' : '14px'};">${String.fromCharCode(65 + altIndex)})</span>
+                <span style="font-size: ${isTwo ? '14px' : '14px'}; line-height: 1.3;">${alt}</span>
+              </div>
+            `).join('')}
+        </div>
+      `;
+    } else if (item.tipoItem === 'verdadeiro_falso') {
+      contentHTML = `
+        <div style="margin-left: ${isTwo ? '2.5mm' : '3mm'};">
+          ${[...item.afirmativas, ...(item.afirmativasExtras || [])]
+            .filter(afirm => afirm.trim())
+            .map((afirm, afirmIndex) => `
+              <div style="display: flex; align-items: flex-start; margin: ${isTwo ? '1mm' : '1mm'} 0;">
+                <span style="margin-right: ${isTwo ? '1.5mm' : '2mm'}; font-weight: bold; font-size: ${isTwo ? '14px' : '14px'};">${afirmIndex + 1}.</span>
+                <span style="margin-right: ${isTwo ? '1.5mm' : '2mm'}; font-family: monospace; letter-spacing: ${isTwo ? '6px' : '15px'}; font-size: ${isTwo ? '14px' : '14px'};">( )</span>
+                <span style="flex: 1; font-size: ${isTwo ? '14px' : '14px'}; line-height: 1.3;">${afirm}</span>
+              </div>
+            `).join('')}
+        </div>
+      `;
+    } else if (item.tipoItem === 'discursiva') {
+      const linhas = Math.min(parseInt(item.quantidadeLinhas) || 5, isTwo ? 35 : 40);
+      contentHTML = `
+        <div style="margin: ${isTwo ? '1.5mm' : '2mm'} 0 0 ${isTwo ? '2.5mm' : '3mm'};">
+          ${Array.from({ length: linhas }).map(() =>
+            `<div style="border-bottom: 1px solid #9ca3af; height: ${isTwo ? '3.5mm' : '4mm'}; margin: ${isTwo ? '1mm' : '1mm'} 0;"></div>`
+          ).join('')}
+        </div>
+      `;
+    }
+
+    const questionHTML = `
+      <div class="question">
+        <div style="display: flex; align-items: flex-start; margin-bottom: 2mm;">
+          <span style="margin-right: 2mm; font-weight: bold; font-size: 14px;">${questionNumber}.</span>
+          <div style="flex: 1;">${wrappedTextoItem}</div>
+        </div>
+        ${contentHTML}
+        <div class="question-separator"></div>
+      </div>
+    `;
+
+    return questionHTML;
+  };
+
+  const titleHTML = nomeAvaliacao ? `
+    <div style="text-align: center; font-family: Arial, sans-serif; font-size: 14px; font-weight: bold; margin-bottom: 3mm; letter-spacing: 0.5px;">
+      ${nomeAvaliacao}
+    </div>
+    <div style="border-bottom: 1.5px solid #000; margin-bottom: 4mm;"></div>
+  ` : '';
+
+  // Se for uma coluna, gerar normalmente
+  if (columns !== '2') {
+    const allQuestionsHTML = selectedItems.map((item, index) => {
+      return generateQuestionHTML(item, index + 1);
+    }).join('');
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>${questionsCSS}</style>
+      </head>
+      <body>
+        ${titleHTML}
+        <div class="questions-container single-column">
+          ${allQuestionsHTML}
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  // Para 2 colunas, usar CSS multi-column que distribui automaticamente
+  const allQuestionsHTML = selectedItems.map((item, index) => {
+    return generateQuestionHTML(item, index + 1);
+  }).join('');
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>${questionsCSS}</style>
+    </head>
+    <body>
+      ${titleHTML}
+      <div class="questions-container two-column">
+        ${allQuestionsHTML}
+      </div>
+    </body>
+    </html>
+  `;
+};
+
+// NOVA FUNÇÃO: Gera HTML de uma folha de resposta individual (com cabeçalho)
 const generateSingleSheetHTML = async (finalData, quillCSS) => {
   const hasImage = !!finalData.headerImage;
 
@@ -340,146 +592,471 @@ const generateSingleSheetHTML = async (finalData, quillCSS) => {
   `;
 };
 
-const generateQuestionsHTML = (finalData, columns, quillCSS) => {
-  const { selectedItems } = finalData;
+// --- ENDPOINT: GERAR PDF ÚNICO COM TODAS AS FOLHAS DE RESPOSTA ---
+app.post('/api/generate-student-sheets', async (req, res) => {
+  let browser = null;
+  try {
+    const { students, assessmentData: aData } = req.body;
 
-  const nomeAvaliacao = finalData.nomeAvaliacao && finalData.nomeAvaliacao.trim()
-    ? finalData.nomeAvaliacao.trim().toUpperCase()
-    : 'QUESTÕES DA AVALIAÇÃO';
-
-  const questionsCSS = `
-    ${quillCSS}
-    @page {
-      size: A4;
-      margin: 8mm 8mm 5mm 8mm;
+    if (!students || students.length === 0) {
+      return res.status(400).json({ error: 'Nenhum aluno fornecido.' });
     }
 
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 0;
+    const puppeteerOptions = {
+      headless: 'new',
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN || '/usr/bin/google-chrome-stable' || undefined,
+      args: [
+        '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas', '--no-first-run', '--no-zygote',
+        '--disable-gpu', '--disable-web-security', '--disable-features=VizDisplayCompositor',
+        '--memory-pressure-off', '--max_old_space_size=4096',
+      ],
+      timeout: 300000,
+      protocolTimeout: 300000,
+    };
+
+    browser = await puppeteer.launch(puppeteerOptions);
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    let quillCSS = '';
+    try {
+      quillCSS = fs.readFileSync(require.resolve('react-quill/dist/quill.snow.css'), 'utf8');
+    } catch {
+      quillCSS = `.ql-editor { font-family: inherit; font-size: inherit; line-height: inherit; }`;
     }
 
-    .questions-container {
-      margin-top: 0;
+    const finalPdfDoc = await PDFDocument.create();
+
+    for (const student of students) {
+      const sheetData = {
+        ...aData,
+        studentName: student.name,
+        studentToken: student.qrUrl,
+        studentId: student.id,
+      };
+
+      const sheetHTML = await generateSingleSheetHTML(sheetData, quillCSS);
+
+      const page = await browser.newPage();
+      await new Promise(resolve => setTimeout(resolve, 500));
+      page.setDefaultTimeout(120000);
+      await page.setViewport({ width: 1200, height: 800 });
+      await page.setContent(sheetHTML, { waitUntil: 'load', timeout: 120000 });
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      const pdfBuffer = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        margin: { top: '7.5mm', right: '7.5mm', bottom: '7.5mm', left: '7.5mm' },
+        timeout: 120000,
+      });
+      await page.close();
+
+      const sheetDoc = await PDFDocument.load(pdfBuffer);
+      const pages = await finalPdfDoc.copyPages(sheetDoc, sheetDoc.getPageIndices());
+      pages.forEach(p => finalPdfDoc.addPage(p));
     }
 
-    .questions-container.two-column {
-      column-count: 2;
-      column-gap: 8mm;
-      column-rule: 1px solid #313030ff;
+    const finalPdfBytes = await finalPdfDoc.save();
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="folhas_de_resposta.pdf"');
+    res.send(Buffer.from(finalPdfBytes));
+
+  } catch (error) {
+    console.error('❌ Erro ao gerar folhas:', error);
+    res.status(500).json({ error: 'Erro interno ao gerar folhas', details: error.message });
+  } finally {
+    if (browser) {
+      try { if (browser.isConnected()) await browser.close(); } catch {}
+    }
+  }
+});
+
+// --- FUNÇÃO PRINCIPAL ULTRA ROBUSTA PARA SESSION CLOSED ---
+
+const handlePdfRequest = async (req, res, disposition) => {
+  let browser = null;
+  let questionsPage = null;
+
+  try {
+    const { columns, ...finalData } = req.body;
+
+    console.log('🚀 Iniciando Puppeteer ULTRA ROBUSTO...');
+    
+    // Configuração ULTRA robusta do Puppeteer
+    const puppeteerOptions = {
+      headless: 'new',
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH ||
+                      process.env.CHROME_BIN ||
+                      '/usr/bin/google-chrome-stable' ||
+                      undefined,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--disable-ipc-flooding-protection',
+        '--memory-pressure-off',
+        '--max_old_space_size=4096',
+        '--disable-extensions',
+        '--disable-plugins',
+        '--disable-default-apps',
+        '--disable-sync',
+        '--disable-translate',
+        '--hide-scrollbars',
+        '--mute-audio',
+        '--no-default-browser-check',
+        '--no-pings',
+        '--disable-client-side-phishing-detection',
+        '--disable-component-extensions-with-background-pages',
+        '--disable-background-networking',
+        // NOVOS FLAGS PARA EVITAR SESSION CLOSED
+        '--disable-blink-features=AutomationControlled',
+        '--disable-features=TranslateUI',
+        '--disable-component-update',
+        '--disable-domain-reliability',
+        '--disable-sync',
+        '--disable-client-side-phishing-detection',
+        '--disable-hang-monitor',
+        '--disable-popup-blocking',
+        '--disable-prompt-on-repost',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-features=VizDisplayCompositor',
+        '--run-all-compositor-stages-before-draw',
+        '--disable-new-content-rendering-timeout'
+      ],
+      // Configurações de timeout MUITO mais generosas
+      timeout: 300000, // 5 minutos
+      protocolTimeout: 300000, // 5 minutos
+      // Configurações de memória
+      ignoreDefaultArgs: ['--disable-extensions'],
+      handleSIGINT: false,
+      handleSIGTERM: false,
+      handleSIGHUP: false,
+      // NOVA: Configuração para manter sessão ativa
+      keepAlive: true
+    };
+
+    // Inicializar browser com retry
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    while (retryCount < maxRetries && !browser) {
+      try {
+        console.log(`🔄 Tentativa ${retryCount + 1}/${maxRetries} de inicializar Puppeteer...`);
+        browser = await puppeteer.launch(puppeteerOptions);
+        console.log('✅ Puppeteer iniciado com sucesso!');
+        break;
+      } catch (error) {
+        retryCount++;
+        console.log(`⚠️ Tentativa ${retryCount} falhou:`, error.message);
+        
+        if (retryCount === maxRetries) {
+          throw new Error(`Falha ao inicializar Puppeteer após ${maxRetries} tentativas: ${error.message}`);
+        }
+        
+        // Aguardar antes da próxima tentativa
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+    
+    // Verificar se o browser foi criado corretamente
+    if (!browser) {
+      throw new Error('Falha ao inicializar o navegador após todas as tentativas');
     }
 
-    .questions-container.single-column {
-      width: 100%;
+    // AGUARDAR o browser estar completamente pronto
+    console.log('⏳ Aguardando browser estar completamente pronto...');
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // Verificar se browser ainda está ativo
+    if (!browser.isConnected()) {
+      throw new Error('Browser perdeu conexão durante inicialização');
     }
 
-    .question {
-      width: 100%;
-      break-inside: avoid;
-      page-break-inside: avoid;
-      -webkit-column-break-inside: avoid;
-      margin-bottom: 2mm;
-      box-sizing: border-box;
-    }
-
-    .question-separator {
-      border-bottom: 1px solid #858383ff;
-      margin-top: 2mm;
-      margin: 0mm 14mm 0mm 0mm;
-    }
-
-    .question:last-child .question-separator {
-      display: none;
-    }
-
-    .ql-editor img {
-      max-width: 100% !important;
-      height: auto !important;
-      object-fit: contain !important;
-      max-height: 40vh !important;
-    }
-
-    .ql-editor {
-      padding: 0 !important;
-      font-size: 14px;
-      line-height: 1.4;
-      overflow: hidden;
-      max-width: 100%;
-      box-sizing: border-box;
-    }
-  `;
-
-  const generateQuestionHTML = (item, questionNumber) => {
-    const isTwo = columns === '2';
-
-    const wrappedTextoItem = item.textoItem ? `
-      <div class="ql-container">
-        <div class="ql-editor">${item.textoItem}</div>
-      </div>
-    ` : '';
-
-    let contentHTML = '';
-    if (item.tipoItem === 'multipla_escolha') {
-      const validAlternatives = item.alternativas.filter(alt => alt && alt.trim() !== '');
-
-      contentHTML = `
-        <div style="margin-left: ${isTwo ? '2.5mm' : '3mm'};">
-          ${validAlternatives.map((alt, altIndex) => `
-              <div style="margin: ${isTwo ? '1mm' : '1mm'} 0; display: flex; align-items: flex-start;">
-                <span style="margin-right: ${isTwo ? '1.5mm' : '2mm'}; font-weight: bold; font-size: ${isTwo ? '14px' : '14px'};">${String.fromCharCode(65 + altIndex)})</span>
-                <span style="font-size: ${isTwo ? '14px' : '14px'}; line-height: 1.3;">${alt}</span>
-              </div>
-            `).join('')}
-        </div>
+    // Carregar CSS do Quill
+    let quillCSS = '';
+    try {
+      quillCSS = fs.readFileSync(require.resolve('react-quill/dist/quill.snow.css'), 'utf8');
+      console.log('✅ CSS do Quill carregado automaticamente');
+    } catch (error) {
+      console.warn('⚠️ Não foi possível carregar o CSS do Quill:', error.message);
+      quillCSS = `
+        .ql-editor { font-family: inherit; font-size: inherit; line-height: inherit; }
+        .ql-editor p { margin-bottom: 8px; }
+        .ql-editor h1, .ql-editor h2, .ql-editor h3 { margin-bottom: 12px; margin-top: 16px; }
+        .ql-editor ul, .ql-editor ol { margin-bottom: 12px; padding-left: 20px; }
+        .ql-editor img { max-width: 100%; height: auto; display: block; margin: 8px 0; }
+        .ql-editor strong { font-weight: bold; }
+        .ql-editor em { font-style: italic; }
+        .ql-editor u { text-decoration: underline; }
       `;
-    } else if (item.tipoItem === 'verdadeiro_falso') {
-      contentHTML = `
-        <div style="margin-left: ${isTwo ? '2.5mm' : '3mm'};">
-          ${[...item.afirmativas, ...(item.afirmativasExtras || [])]
-            .filter(afirm => afirm.trim())
-            .map((afirm, afirmIndex) => `
-              <div style="display: flex; align-items: flex-start; margin: ${isTwo ? '1mm' : '1mm'} 0;">
-                <span style="margin-right: ${isTwo ? '1.5mm' : '2mm'}; font-weight: bold; font-size: ${isTwo ? '14px' : '14px'};">${afirmIndex + 1}.</span>
-                <span style="margin-right: ${isTwo ? '1.5mm' : '2mm'}; font-family: monospace; letter-spacing: ${isTwo ? '6px' : '15px'}; font-size: ${isTwo ? '14px' : '14px'};">( )</span>
-                <span style="flex: 1; font-size: ${isTwo ? '14px' : '14px'}; line-height: 1.3;">${afirm}</span>
-              </div>
-            `).join('')}
-        </div>
-      `;
-    } else if (item.tipoItem === 'discursiva') {
-      const linhas = Math.min(parseInt(item.quantidadeLinhas) || 5, isTwo ? 35 : 40);
-      contentHTML = `
-        <div style="margin: ${isTwo ? '1.5mm' : '2mm'} 0 0 ${isTwo ? '2.5mm' : '3mm'};">
-          ${Array.from({ length: linhas }).map(() =>
-            `<div style="border-bottom: 1px solid #9ca3af; height: ${isTwo ? '3.5mm' : '4mm'}; margin: ${isTwo ? '1mm' : '1mm'} 0;"></div>`
-          ).join('')}
-        </div>
-      `;
     }
 
-    return `
-      <div class="question">
-        <div style="display: flex; align-items: flex-start; margin-bottom: 2mm;">
-          <span style="margin-right: 2mm; font-weight: bold; font-size: 14px;">${questionNumber}.</span>
-          <div style="flex: 1;">${wrappedTextoItem}</div>
-        </div>
-        ${contentHTML}
-        <div class="question-separator"></div>
-      </div>
-    `;
-  };
+    // --- GERAR PDF DAS QUESTÕES ---
+    console.log('📝 Criando página para as QUESTÕES...');
+    
+    // Verificar browser antes de criar segunda página
+    if (!browser.isConnected()) {
+      throw new Error('Browser desconectado antes de criar página das questões');
+    }
+    
+    questionsPage = await browser.newPage();
+    
+    // AGUARDAR a página estar completamente inicializada
+    console.log('⏳ Aguardando página das questões estar pronta...');
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Verificar se a página foi criada corretamente
+    if (!questionsPage || questionsPage.isClosed()) {
+      throw new Error('Falha ao criar página das questões');
+    }
+    
+    // Configurações de timeout MUITO mais generosas
+    questionsPage.setDefaultTimeout(300000); // 5 minutos
+    questionsPage.setDefaultNavigationTimeout(300000); // 5 minutos
+    
+    // Configurar viewport
+    console.log('🖥️ Configurando viewport das questões...');
+    await questionsPage.setViewport({ width: 1200, height: 800 });
 
-  const titleHTML = nomeAvaliacao ? `
-    <div style="text-align: center; font-family: Arial, sans-serif; font-size: 14px; font-weight: bold; margin-bottom: 3mm; letter-spacing: 0.5px;">
-      ${nomeAvaliacao}
-    </div>
-    <div style="border-bottom: 1.5px solid #000; margin-bottom: 4mm;"></div>
-  ` : '';
+    // Gerar HTML das questões
+    console.log('📝 Gerando HTML das questões...');
+    const questionsHtml = generateQuestionsHTML(finalData, columns, quillCSS);
+    
+    // Verificar se a página ainda está ativa antes de setContent
+    if (!questionsPage || questionsPage.isClosed()) {
+      throw new Error('Página das questões foi fechada antes de definir conteúdo');
+    }
+    
+    // MÉTODO ULTRA SEGURO: Usar setContent com retry
+    const maxContentRetries = 3;
+    console.log('📝 Definindo conteúdo HTML das questões...');
+    let questionsContentSet = false;
+    let questionsContentRetries = 0;
+    
+    while (!questionsContentSet && questionsContentRetries < maxContentRetries) {
+      try {
+        await questionsPage.setContent(questionsHtml, { 
+          waitUntil: 'load',
+          timeout: 180000 // 3 minutos
+        });
+        questionsContentSet = true;
+        console.log('✅ Conteúdo HTML das questões definido com sucesso');
+      } catch (setContentError) {
+        questionsContentRetries++;
+        console.warn(`⚠️ Tentativa ${questionsContentRetries}/${maxContentRetries} de definir conteúdo das questões falhou:`, setContentError.message);
+        
+        if (questionsContentRetries === maxContentRetries) {
+          throw new Error(`Falha ao definir conteúdo HTML das questões após ${maxContentRetries} tentativas: ${setContentError.message}`);
+        }
+        
+        // Aguardar antes da próxima tentativa
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Verificar se página ainda está ativa
+        if (!questionsPage || questionsPage.isClosed()) {
+          throw new Error('Página das questões foi fechada durante retry de setContent');
+        }
+      }
+    }
+    
+    // Aguardar renderização completa
+    console.log('⏳ Aguardando renderização completa das questões...');
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    
+    // Verificar novamente se a página ainda está ativa
+    if (!questionsPage || questionsPage.isClosed()) {
+      throw new Error('Página das questões foi fechada durante renderização');
+    }
+    
+    // Verificar se browser ainda está conectado
+    if (!browser.isConnected()) {
+      throw new Error('Browser desconectado durante renderização das questões');
+    }
+    
+    let questionsPdfBuffer;
+    try {
+      console.log('🖨️ Gerando PDF das questões...');
 
-  // Adicionar marcadores ArUco também nas páginas de questões
-  const arucoMarkersHTML = `
-    <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 1000;">
-      <img src="${ARUCO_MARKERS.TL}" style="position: fixed; top: 5mm; left: 5mm; width: 10mm; height: 10mm;" />
-      <img src="${ARUCO_MARKERS.TR}" style="position: fixed; top: 5mm; right: 5mm; width: 10mm; height: 10mm;" />
-      <img src="${ARUCO_MARKERS.BL}" style="position: fixed
+      // Obter o nome da avaliação para o cabeçalho
+      const nomeAvaliacaoHeader = finalData.nomeAvaliacao && finalData.nomeAvaliacao.trim()
+        ? finalData.nomeAvaliacao.trim().toUpperCase()
+        : 'QUESTÕES DA AVALIAÇÃO';
+
+      questionsPdfBuffer = await questionsPage.pdf({
+        format: 'A4',
+        printBackground: true,
+        displayHeaderFooter: false,
+        margin: {
+          top: '7.5mm',
+          right: '7.5mm',
+          bottom: '7.5mm',
+          left: '7.5mm'
+        },
+        timeout: 180000, // 3 minutos
+        preferCSSPageSize: true
+      });
+      console.log('✅ PDF das questões gerado com sucesso');
+    } catch (pdfError) {
+      console.error('❌ Erro ao gerar PDF das questões:', pdfError);
+      throw new Error(`Falha na geração do PDF das questões: ${pdfError.message}`);
+    }
+
+    // --- ENVIAR RESPOSTA ---
+    console.log('✅ PDF das questões gerado com sucesso!');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `${disposition}; filename="avaliacao.pdf"`);
+    res.send(Buffer.from(questionsPdfBuffer));
+
+  } catch (error) {
+    console.error('❌ Erro fatal durante a geração do PDF:', error);
+    
+    // Log adicional para debug
+    if (error.message.includes('Session closed') || error.message.includes('Protocol error') || error.message.includes('Connection closed')) {
+      console.error('🔍 Erro de sessão/protocolo detectado. Possíveis causas:');
+      console.error('   - Timeout insuficiente (aumentado para 5 minutos)');
+      console.error('   - Memória insuficiente (configurações ultra otimizadas)');
+      console.error('   - Processo do Chrome foi terminado (proteções ultra robustas)');
+      console.error('   - Conteúdo HTML muito complexo (simplificado)');
+      console.error('   - Timing de inicialização (aguardando muito mais tempo)');
+      console.error('   - Sessão perdida (implementado retry e verificações)');
+    }
+    
+    res.status(500).json({ 
+      error: 'Erro interno ao gerar o PDF', 
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      timestamp: new Date().toISOString()
+    });
+  } finally {
+    if (questionsPage) {
+      try { if (!questionsPage.isClosed()) await questionsPage.close(); } catch {}
+    }
+    if (browser) {
+      try { if (browser.isConnected()) await browser.close(); } catch {}
+    }
+    if (global.gc) global.gc();
+  }
+};
+
+// --- ROTAS DA API ---
+
+// Endpoint de download que chama a função central
+app.post('/api/generate-pdf', (req, res) => handlePdfRequest(req, res, 'attachment'));
+
+// Endpoint de preview que chama a função central
+app.post('/api/preview-pdf', (req, res) => handlePdfRequest(req, res, 'inline'));
+
+// Endpoint para gerar apenas a folha de resposta de um aluno (sem questões)
+app.post('/api/generate-cover', async (req, res) => {
+  let browser = null;
+  let page = null;
+  try {
+    const finalData = req.body;
+
+    const puppeteerOptions = {
+      headless: 'new',
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN || '/usr/bin/google-chrome-stable' || undefined,
+      args: [
+        '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas', '--no-first-run', '--no-zygote',
+        '--disable-gpu', '--disable-web-security', '--disable-features=VizDisplayCompositor',
+        '--memory-pressure-off', '--max_old_space_size=4096',
+      ],
+      timeout: 120000,
+      protocolTimeout: 120000,
+    };
+
+    browser = await puppeteer.launch(puppeteerOptions);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    let quillCSS = '';
+    try {
+      quillCSS = fs.readFileSync(require.resolve('react-quill/dist/quill.snow.css'), 'utf8');
+    } catch {
+      quillCSS = `.ql-editor { font-family: inherit; font-size: inherit; line-height: inherit; }`;
+    }
+
+    const html = await generateSingleSheetHTML(finalData, quillCSS);
+
+    page = await browser.newPage();
+    await new Promise(resolve => setTimeout(resolve, 500));
+    page.setDefaultTimeout(120000);
+    await page.setViewport({ width: 1200, height: 800 });
+    await page.setContent(html, { waitUntil: 'load', timeout: 120000 });
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '7.5mm', right: '7.5mm', bottom: '7.5mm', left: '7.5mm' },
+      timeout: 120000,
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="folha.pdf"');
+    res.send(Buffer.from(pdfBuffer));
+
+  } catch (error) {
+    console.error('❌ Erro ao gerar folha individual:', error);
+    res.status(500).json({ error: 'Erro interno ao gerar folha', details: error.message });
+  } finally {
+    if (page) { try { if (!page.isClosed()) await page.close(); } catch {} }
+    if (browser) { try { if (browser.isConnected()) await browser.close(); } catch {} }
+  }
+});
+
+// Middleware de tratamento de erros
+app.use((err, req, res, next) => {
+  console.error('❌ Erro não tratado:', err);
+  res.status(500).json({ 
+    error: 'Erro interno do servidor',
+    message: err.message,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// --- INICIALIZAÇÃO DO SERVIDOR ---
+app.listen(PORT, () => {
+  console.log(`🚀 Servidor Puppeteer ULTRA ROBUSTO rodando na porta ${PORT}`);
+  console.log(`📍 Health check: http://localhost:${PORT}/api/health`);
+  console.log(`📄 Endpoint PDF: http://localhost:${PORT}/api/generate-pdf`);
+  console.log(`👁️ Endpoint Preview: http://localhost:${PORT}/api/preview-pdf`);
+  console.log(`🛡️ Configurações anti-session-closed ULTRA robustas ativadas`);
+  console.log(`⏱️ Timeouts aumentados para 5 minutos`);
+  console.log(`🔄 Sistema de retry implementado`);
+  console.log(`📊 Verificações de estado contínuas ativadas`);
+});
+
+// Tratamento de sinais para encerramento gracioso
+process.on('SIGTERM', () => {
+  console.log('🛑 Recebido SIGTERM, encerrando servidor...');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('🛑 Recebido SIGINT, encerrando servidor...');
+  process.exit(0);
+});
+
+// Tratamento de exceções não capturadas
+process.on('uncaughtException', (error) => {
+  console.error('❌ Exceção não capturada:', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Promise rejeitada não tratada:', reason);
+  console.error('Promise:', promise);
+});
