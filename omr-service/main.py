@@ -280,10 +280,10 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"], # Permite qualquer origem
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"], # Permite todos os métodos (GET, POST, etc)
+    allow_headers=["*"], # Permite todos os cabeçalhos
 )
 
 @app.post("/api/omr/scan")
