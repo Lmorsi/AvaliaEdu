@@ -9,7 +9,6 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from sklearn.cluster import DBSCAN
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -55,7 +54,7 @@ def detect_markers(image: np.ndarray) -> Optional[List[List[float]]]:
             # Calcular bounding box
             x, y, w, h = cv2.boundingRect(contour)
             
-            # Verificar se é aproximadamente quadrado (proporção entre 0.8 e 1.2)
+            # Verificar se é aproximadamente quadrado
             aspect_ratio = w / h if h > 0 else 0
             if 0.8 < aspect_ratio < 1.2:
                 # Calcular centro
@@ -63,9 +62,9 @@ def detect_markers(image: np.ndarray) -> Optional[List[List[float]]]:
                 center_y = y + h // 2
                 markers.append((center_x, center_y, area))
     
-    # Ordenar marcadores por posição (canto superior esquerdo, direito, inferior direito, inferior esquerdo)
+    # Ordenar marcadores por posição
     if len(markers) >= 4:
-        # Encontrar os 4 cantos baseado na soma e diferença das coordenadas
+        # Encontrar os 4 cantos
         markers.sort(key=lambda p: p[0] + p[1])  # top-left tem menor soma
         tl = markers[0]
         markers.sort(key=lambda p: p[0] - p[1])  # top-right tem maior diferença
@@ -173,12 +172,12 @@ def find_bubbles_adaptive(gray: np.ndarray, min_area: int = 80, max_area: int = 
         # Obter bounding box
         x, y, w, h = cv2.boundingRect(contour)
         
-        # Verificar proporção (bolhas devem ser aproximadamente quadradas)
+        # Verificar proporção
         aspect_ratio = w / h if h > 0 else 0
         if aspect_ratio < 0.7 or aspect_ratio > 1.3:
             continue
         
-        # Calcular circularidade/retangularidade
+        # Calcular solidez
         hull = cv2.convexHull(contour)
         hull_area = cv2.contourArea(hull)
         if hull_area > 0:
@@ -186,7 +185,7 @@ def find_bubbles_adaptive(gray: np.ndarray, min_area: int = 80, max_area: int = 
             if solidity < 0.5:
                 continue
         
-        # Expandir ligeiramente a bounding box para garantir que pegamos toda a área
+        # Expandir ligeiramente
         padding = 2
         x = max(0, x - padding)
         y = max(0, y - padding)
@@ -218,7 +217,7 @@ def calculate_fill_percentage_adaptive(
     # Calcular threshold baseado na média da região
     mean_intensity = np.mean(roi)
     
-    # Se a região for muito escura, a bolha provavelmente está marcada
+    # Threshold adaptativo
     if mean_intensity < 80:
         threshold = 100
     elif mean_intensity < 120:
@@ -229,7 +228,7 @@ def calculate_fill_percentage_adaptive(
     # Aplicar threshold
     _, roi_thresh = cv2.threshold(roi, threshold, 255, cv2.THRESH_BINARY_INV)
     
-    # Calcular porcentagem de pixels escuros
+    # Calcular porcentagem
     dark_pixels = cv2.countNonZero(roi_thresh)
     total_pixels = roi.size
     
@@ -238,45 +237,55 @@ def calculate_fill_percentage_adaptive(
     
     return dark_pixels / total_pixels
 
-def cluster_checkboxes_dbscan(
+def cluster_checkboxes_by_rows(
     checkboxes: List[Tuple[int, int, int, int]],
-    eps: int = 20,
-    min_samples: int = 1
+    tolerance: int = 30
 ) -> List[List[Tuple[int, int, int, int]]]:
     """
-    Agrupa checkboxes em linhas usando DBSCAN baseado na coordenada Y.
+    Agrupa checkboxes em linhas baseado na proximidade vertical.
+    Versão sem dependência do sklearn.
     """
     if not checkboxes:
         return []
     
-    # Extrair coordenadas Y dos centros
-    centers_y = np.array([y + h//2 for (x, y, w, h) in checkboxes]).reshape(-1, 1)
+    # Calcular centro Y para cada checkbox
+    boxes_with_center = []
+    for x, y, w, h in checkboxes:
+        center_y = y + h // 2
+        boxes_with_center.append((x, y, w, h, center_y))
     
-    # Aplicar DBSCAN para agrupar linhas
-    clustering = DBSCAN(eps=eps, min_samples=min_samples).fit(centers_y)
-    labels = clustering.labels_
+    # Ordenar por centro Y
+    boxes_with_center.sort(key=lambda b: b[4])
     
-    # Organizar bolhas por cluster (linha)
-    rows_dict = {}
-    for idx, label in enumerate(labels):
-        if label not in rows_dict:
-            rows_dict[label] = []
-        rows_dict[label].append(checkboxes[idx])
-    
-    # Ordenar cada linha por coordenada X
+    # Agrupar em linhas
     rows = []
-    for label in sorted(rows_dict.keys()):
-        if label == -1:  # Ruído
-            continue
-        row = sorted(rows_dict[label], key=lambda b: b[0])  # Ordenar por x
-        if len(row) >= 3:  # Mínimo de 3 bolhas por linha
-            rows.append(row)
+    current_row = [boxes_with_center[0]]
+    
+    for box in boxes_with_center[1:]:
+        # Verificar se está na mesma linha (diferença Y dentro da tolerância)
+        if abs(box[4] - current_row[0][4]) <= tolerance:
+            current_row.append(box)
+        else:
+            # Finalizar linha atual
+            if len(current_row) >= 3:  # Mínimo de 3 bolhas
+                # Remover o centro Y antes de adicionar
+                row_without_center = [(x, y, w, h) for (x, y, w, h, _) in current_row]
+                # Ordenar por X
+                row_without_center.sort(key=lambda b: b[0])
+                rows.append(row_without_center)
+            current_row = [box]
+    
+    # Adicionar última linha
+    if len(current_row) >= 3:
+        row_without_center = [(x, y, w, h) for (x, y, w, h, _) in current_row]
+        row_without_center.sort(key=lambda b: b[0])
+        rows.append(row_without_center)
     
     return rows
 
 def detect_bubbles(
     image: np.ndarray,
-    marked_percentage: float = 0.20,  # Reduzido para detectar mais facilmente
+    marked_percentage: float = 0.20,
 ) -> BubbleResult:
     """
     Detecta e classifica bolhas marcadas/não marcadas.
@@ -294,9 +303,8 @@ def detect_bubbles(
     height, width = gray.shape
     
     # Definir ROI - pular cabeçalho e rodapé
-    # Ajuste estes valores baseado na posição real das bolhas após correção de perspectiva
-    roi_y_start = int(height * 0.25)  # Pular topo
-    roi_y_end = int(height * 0.85)    # Pular rodapé
+    roi_y_start = int(height * 0.20)  # Pular topo
+    roi_y_end = int(height * 0.90)    # Pular rodapé
     roi_x_start = int(width * 0.10)   # Margem esquerda
     roi_x_end = int(width * 0.90)     # Margem direita
     
@@ -326,7 +334,7 @@ def detect_bubbles(
         checkboxes.append((x + roi_x_start, y + roi_y_start, w, h))
     
     # Agrupar em linhas
-    rows = cluster_checkboxes_dbscan(checkboxes, eps=30)
+    rows = cluster_checkboxes_by_rows(checkboxes, tolerance=40)
     
     if not rows:
         logger.warning("No rows detected after clustering")
