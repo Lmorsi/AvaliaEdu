@@ -1,6 +1,6 @@
-"""""
+"""
 Servidor FastAPI para processamento OMR de cartões-resposta.
-Versão corrigida: Ordenação manual de bolhas para evitar erros de OpenCV/imutils.
+Versão corrigida: Detecção robusta de marcadores, correção de perspectiva e fallback.
 """
 
 import base64
@@ -111,23 +111,17 @@ def _find_checkboxes(gray: np.ndarray, min_area: int = 50, max_area: int = 2000)
     checkboxes = []
     for contour in cnts:
         area = cv2.contourArea(contour)
-        # Filtrar por área - ajuste min_area e max_area conforme o tamanho esperado das suas bolhas
         if not (min_area < area < max_area):
             continue
 
-        # Obter o retângulo delimitador
         x, y, w, h = cv2.boundingRect(contour)
-
-        # Filtrar por tamanho mínimo
         if w < 10 or h < 10:
             continue
 
-        # Filtrar por proporção (aspect ratio) - deve ser próximo de 1 para quadrados/círculos
         aspect_ratio = float(w) / h if h > 0 else 0
         if aspect_ratio < 0.7 or aspect_ratio > 1.3:
             continue
 
-        # Filtrar por circularidade/solidez (ajuda a remover contornos irregulares)
         perimeter = cv2.arcLength(contour, True)
         if perimeter < 1:
             continue
@@ -308,68 +302,63 @@ def find_corner_markers(image: np.ndarray) -> Optional[List[List[float]]]:
     Returns a list of [x, y] coordinates for the corners, or None if not found.
     """
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    # Binariza a imagem para realçar os marcadores pretos
-    # Ajuste o threshold para o seu tipo de marcador (quadrado preto)
-    _, thresh = cv2.threshold(gray, 50, 255, cv2.THRESH_BINARY_INV) # Inverte para preto ser branco
+    
+    # Aprimorado: Usar Limiarização de Otsu para se adaptar a diferentes iluminações
+    # E aplicar um blur para reduzir ruídos antes do threshold
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
-    # Operações morfológicas para fechar pequenos buracos nos marcadores
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
-    thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
+    # Operações morfológicas para fechar pequenos buracos nos marcadores e conectá-los
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7)) # Kernel maior para marcadores maiores
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=3)
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=2)
 
     cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     cnts = imutils.grab_contours(cnts)
 
     markers = []
     for c in cnts:
-        # Aproxima o contorno para um polígono
         peri = cv2.arcLength(c, True)
         approx = cv2.approxPolyDP(c, 0.04 * peri, True)
 
-        # Se o polígono tiver 4 vértices, pode ser um quadrado
-        if len(approx) == 4:
+        if len(approx) == 4: # Procurar por contornos com 4 vértices (quadrados)
             x, y, w, h = cv2.boundingRect(approx)
             aspect_ratio = float(w) / h
             area = cv2.contourArea(c)
 
             # Filtra por área e proporção para encontrar os marcadores
             # Ajuste esses valores para o tamanho dos seus marcadores
-            if 0.8 <= aspect_ratio <= 1.2 and 50 < area < 1000: # Exemplo de área
-                markers.append(approx.reshape(4, 2).tolist()) # Pega os 4 pontos do quadrado
+            # Os marcadores do seu cartão são relativamente grandes
+            if 0.8 <= aspect_ratio <= 1.2 and 500 < area < 5000: # Ajustado para marcadores maiores
+                # Calcula o centro do marcador
+                M = cv2.moments(c)
+                if M["m00"] != 0:
+                    cX = int(M["m10"] / M["m00"])
+                    cY = int(M["m01"] / M["m00"])
+                    markers.append([float(cX), float(cY)])
     
-    # Se encontrar mais de 4 marcadores, tente filtrar os 4 mais externos ou maiores
     if len(markers) == 4:
-        # Para cada marcador, pegamos o centro para usar na correção de perspectiva
-        # A função correct_perspective espera 4 pontos [x,y], não 4 conjuntos de 4 pontos
-        # Então, vamos pegar o centro de cada marcador
-        final_corners = []
-        for marker in markers:
-            marker_np = np.array(marker)
-            M = cv2.moments(marker_np)
-            if M["m00"] != 0:
-                cX = int(M["m10"] / M["m00"])
-                cY = int(M["m01"] / M["m00"])
-                final_corners.append([float(cX), float(cY)])
-        return final_corners
+        logger.info("Successfully found 4 corner markers.")
+        # Ordena os marcadores para garantir a ordem TL, TR, BR, BL
+        ordered_markers = _order_corner_points(np.array(markers))
+        return ordered_markers.tolist()
     elif len(markers) > 4:
-        logger.warning(f"Found {len(markers)} potential markers. Filtering to find 4.")
-        # Se encontrar mais de 4, tente pegar os 4 mais externos
-        # Isso é um pouco mais complexo e pode exigir uma lógica de agrupamento espacial
-        # Por simplicidade, vamos apenas pegar os 4 primeiros por enquanto, mas isso pode falhar
-        # Uma abordagem melhor seria ordenar por posição e pegar os cantos
-        final_corners = []
-        for marker in markers:
-            marker_np = np.array(marker)
-            M = cv2.moments(marker_np)
-            if M["m00"] != 0:
-                cX = int(M["m10"] / M["m00"])
-                cY = int(M["m01"] / M["m00"])
-                final_corners.append([float(cX), float(cY)])
+        logger.warning(f"Found {len(markers)} potential markers. Attempting to filter to 4.")
+        # Se mais de 4 forem encontrados, tente pegar os 4 mais externos
+        # Isso é uma heurística e pode não ser 100% robusto em todos os casos
+        markers_np = np.array(markers)
+        # Ordena por soma (x+y) para encontrar TL e BR
+        s = markers_np.sum(axis=1)
+        tl = markers_np[np.argmin(s)]
+        br = markers_np[np.argmax(s)]
+        # Ordena por diferença (y-x) para encontrar TR e BL
+        diff = np.diff(markers_np, axis=1)
+        tr = markers_np[np.argmin(diff)]
+        bl = markers_np[np.argmax(diff)]
         
-        # Ordenar os marcadores para tentar pegar os cantos
-        final_corners_np = np.array(final_corners)
-        ordered_corners = _order_corner_points(final_corners_np)
-        return ordered_corners.tolist()
+        # Reordena para a sequência correta
+        ordered_markers = _order_corner_points(np.array([tl, tr, br, bl]))
+        return ordered_markers.tolist()
 
     logger.warning(f"Could not find exactly 4 corner markers. Found: {len(markers)}")
     return None
@@ -395,33 +384,45 @@ async def scan_omr_sheet(photo: UploadFile = File(...), debug: bool = False):
         if image is None:
             raise HTTPException(status_code=400, detail="Não foi possível decodificar a imagem.")
 
-        # 1. Detectar os 4 marcadores de canto
+        processed_image = image.copy() # Imagem original para fallback
+        corrected_image_base64 = "" # Inicializa para o caso de falha
+        debug_markers_image_base64 = "" # Inicializa para o caso de falha
+
+        # 1. Tentar detectar os 4 marcadores de canto
         corners = find_corner_markers(image)
-        if corners is None:
-            raise HTTPException(status_code=400, detail="Não foi possível detectar os 4 marcadores de canto na imagem.")
-
-        # Desenhar os marcadores detectados na imagem original para debug
-        debug_markers_image = image.copy()
-        for corner_pt in corners:
-            cv2.circle(debug_markers_image, (int(corner_pt[0]), int(corner_pt[1])), 10, (0, 255, 255), -1) # Amarelo
         
-        _, debug_markers_image_encoded = cv2.imencode(".png", debug_markers_image)
-        debug_markers_image_base64 = base64.b64encode(debug_markers_image_encoded).decode("utf-8")
+        if corners is not None:
+            # Desenhar os marcadores detectados na imagem original para debug
+            debug_markers_image = image.copy()
+            for corner_pt in corners:
+                cv2.circle(debug_markers_image, (int(corner_pt[0]), int(corner_pt[1])), 15, (0, 255, 255), -1) # Amarelo
+            
+            _, debug_markers_image_encoded = cv2.imencode(".png", debug_markers_image)
+            debug_markers_image_base64 = base64.b64encode(debug_markers_image_encoded).decode("utf-8")
 
-        # 2. Corrigir a Perspectiva
-        # target_width e target_height devem ser as dimensões padronizadas do seu gabarito
-        target_width = 700 # Largura padrão para processamento
-        # A altura será calculada para manter a proporção do gabarito corrigido
-        # Para o seu cartão, a proporção é aproximadamente A4 (1:1.414)
-        target_height = int(target_width * 1.414) # Ajuste para a proporção do seu cartão
+            # 2. Corrigir a Perspectiva
+            target_width = 700 # Largura padrão para processamento
+            target_height = int(target_width * 1.414) # Proporção A4
 
-        processed_image = correct_perspective(image, corners, target_width, target_height)
-        if processed_image is None:
-            raise HTTPException(status_code=500, detail="Falha na correção de perspectiva.")
-        
-        # Imagem para debug da correção de perspectiva
-        _, corrected_image_encoded = cv2.imencode(".png", processed_image)
-        corrected_image_base64 = base64.b64encode(corrected_image_encoded).decode("utf-8")
+            warped_image = correct_perspective(image, corners, target_width, target_height)
+            if warped_image is not None:
+                processed_image = warped_image # Usa a imagem corrigida se o warp for bem-sucedido
+                _, corrected_image_encoded = cv2.imencode(".png", processed_image)
+                corrected_image_base64 = base64.b64encode(corrected_image_encoded).decode("utf-8")
+            else:
+                logger.warning("Perspective correction failed, proceeding with resized original image.")
+                # Fallback: se a correção de perspectiva falhar, redimensiona a imagem original
+                processed_image = cv2.resize(image, (target_width, target_height), interpolation=cv2.INTER_AREA)
+                _, corrected_image_encoded = cv2.imencode(".png", processed_image)
+                corrected_image_base64 = base64.b64encode(corrected_image_encoded).decode("utf-8")
+        else:
+            logger.warning("Could not find 4 corner markers. Proceeding with resized original image.")
+            # Fallback: se não encontrar os 4 marcadores, redimensiona a imagem original
+            target_width = 700
+            target_height = int(image.shape[0] * (target_width / image.shape[1]))
+            processed_image = cv2.resize(image, (target_width, target_height), interpolation=cv2.INTER_AREA)
+            _, corrected_image_encoded = cv2.imencode(".png", processed_image)
+            corrected_image_base64 = base64.b64encode(corrected_image_encoded).decode("utf-8")
 
         # 3. Detecção de Bolhas
         bubble_result = detect_bubbles(processed_image)
@@ -434,19 +435,16 @@ async def scan_omr_sheet(photo: UploadFile = File(...), debug: bool = False):
         response_data = {
             "status": "success",
             "bubbles": bubble_result.dict(),
-            "corrected_image": corrected_image_base64, # Imagem corrigida
+            "corrected_image": corrected_image_base64, # Imagem corrigida ou original redimensionada
             "debug_image": annotated_image_base64, # Imagem com bolhas desenhadas
-            "markers_debug_image": debug_markers_image_base64, # Imagem com marcadores detectados
+            "markers_debug_image": debug_markers_image_base64, # Imagem com marcadores detectados (se houver)
         }
 
         return JSONResponse(content=response_data)
 
-    except HTTPException as e:
-        logger.error(f"HTTP Exception: {e.detail}")
-        return JSONResponse(status_code=e.status_code, content={"status": "error", "message": e.detail})
     except Exception as e:
         logger.error(f"Erro inesperado no processamento: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Erro interno do servidor: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro interno: {e}")
 
 @app.get("/health")
 async def health_check():
