@@ -17,24 +17,25 @@ from omr.models import BubbleResult, BubbleGrid
 logger = logging.getLogger(__name__)
 
 
-def _find_bubbles(gray: np.ndarray, min_area: int = 50, max_area: int = 3500) -> list[tuple[int, int, int]]:
+def _find_bubbles(gray: np.ndarray, min_area: int = 80, max_area: int = 3000) -> list[tuple[int, int, int]]:
     """
     Find circular bubble regions in a grayscale image.
 
     Returns list of (cx, cy, radius) for each detected bubble.
-    Uses contour detection and circularity filtering.
+    Uses contour detection with circularity filtering to avoid detecting text.
     """
     # Apply Otsu's thresholding for better separation
     _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
-    # Apply morphological operations to enhance circles
+    # Apply morphological operations to enhance circles and remove noise
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     gray_processed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
+    gray_processed = cv2.morphologyEx(gray_processed, cv2.MORPH_OPEN, kernel, iterations=1)
 
     # Find contours
     contours, _ = cv2.findContours(gray_processed, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
 
-    logger.info("Found %d contours total", len(contours))
+    logger.info("Found %d contours after morphology", len(contours))
 
     bubbles = []
     for contour in contours:
@@ -44,7 +45,7 @@ def _find_bubbles(gray: np.ndarray, min_area: int = 50, max_area: int = 3500) ->
 
         # Fit circle
         (cx, cy), radius = cv2.minEnclosingCircle(contour)
-        if radius < 8:
+        if radius < 9:
             continue
 
         # Check circularity: 4π * area / perimeter²
@@ -53,12 +54,19 @@ def _find_bubbles(gray: np.ndarray, min_area: int = 50, max_area: int = 3500) ->
             continue
 
         circularity = 4 * np.pi * area / (perimeter * perimeter)
-        if circularity < 0.65:
+        if circularity < 0.70:  # Moderately strict - rejects elongated text
+            continue
+
+        # Additional check: aspect ratio of bounding box should be close to 1
+        x, y, w, h = cv2.boundingRect(contour)
+        aspect_ratio = float(w) / h if h > 0 else 0
+        if abs(aspect_ratio - 1.0) > 0.3:  # Allow 30% deviation from square
             continue
 
         bubbles.append((int(cx), int(cy), int(radius)))
-        logger.debug(f"Bubble: cx={cx:.0f}, cy={cy:.0f}, r={radius:.0f}, area={area:.0f}, circ={circularity:.2f}")
+        logger.info(f"Bubble: cx={cx:.0f}, cy={cy:.0f}, r={radius:.0f}, area={area:.0f}, circ={circularity:.3f}, ar={aspect_ratio:.2f}")
 
+    logger.info("Total bubbles found: %d", len(bubbles))
     return bubbles
 
 
@@ -128,8 +136,8 @@ def _cluster_bubbles(
 
 def detect_bubbles(
     image: np.ndarray,
-    fill_threshold: int = 150,
-    marked_percentage: float = 0.35,
+    fill_threshold: int = 130,
+    marked_percentage: float = 0.4,
 ) -> BubbleResult:
     """
     Detect and classify bubbles as marked or unmarked.
