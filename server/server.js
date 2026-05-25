@@ -91,14 +91,15 @@ const generateAnswerSheet = async (finalData) => {
   }
 
   // L-shaped fiducial markers on the LEFT and RIGHT sides of the answer sheet.
-  // Each marker is a solid black "L" shape (two perpendicular bars).
+  // Each marker is a solid black "L" shape with thick bars (20% of marker size).
   // Layout: 2 L-markers on the left side, 2 on the right side, at ~30% and ~70% height.
-  // Left markers open rightward (└), right markers open leftward (┌ mirrored = ┘).
+  // Left markers: vertical bar on left, horizontal bar on top (└) or bottom
+  // Right markers: vertical bar on right, horizontal bar on top or bottom (┘)
   // Used by fiducial.py for perspective correction — more robust than ArUco.
-  const L_MARKER_LEFT_TOP = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><rect x="0" y="0" width="40" height="8" fill="black"/><rect x="0" y="0" width="8" height="40" fill="black"/></svg>`;
-  const L_MARKER_LEFT_BOTTOM = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><rect x="0" y="32" width="40" height="8" fill="black"/><rect x="0" y="0" width="8" height="40" fill="black"/></svg>`;
-  const L_MARKER_RIGHT_TOP = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><rect x="0" y="0" width="40" height="8" fill="black"/><rect x="32" y="0" width="8" height="40" fill="black"/></svg>`;
-  const L_MARKER_RIGHT_BOTTOM = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><rect x="0" y="32" width="40" height="8" fill="black"/><rect x="32" y="0" width="8" height="40" fill="black"/></svg>`;
+  const L_MARKER_LEFT_TOP = `<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60"><rect x="0" y="0" width="60" height="12" fill="black"/><rect x="0" y="0" width="12" height="60" fill="black"/></svg>`;
+  const L_MARKER_LEFT_BOTTOM = `<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60"><rect x="0" y="48" width="60" height="12" fill="black"/><rect x="0" y="0" width="12" height="60" fill="black"/></svg>`;
+  const L_MARKER_RIGHT_TOP = `<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60"><rect x="0" y="0" width="60" height="12" fill="black"/><rect x="48" y="0" width="12" height="60" fill="black"/></svg>`;
+  const L_MARKER_RIGHT_BOTTOM = `<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60"><rect x="0" y="48" width="60" height="12" fill="black"/><rect x="48" y="0" width="12" height="60" fill="black"/></svg>`;
 
   const L_LT_B64 = Buffer.from(L_MARKER_LEFT_TOP).toString('base64');
   const L_LB_B64 = Buffer.from(L_MARKER_LEFT_BOTTOM).toString('base64');
@@ -110,11 +111,11 @@ const generateAnswerSheet = async (finalData) => {
     <div style="position: relative; padding: 12mm 8mm 10mm 8mm; margin-top: 5mm; page-break-inside: avoid;">
       <!-- 4 L-shaped fiducial markers on left and right sides for perspective correction -->
       <!-- Left side: top at ~30%, bottom at ~70% -->
-      <img src="data:image/svg+xml;base64,${L_LT_B64}" style="position: absolute; top: 30%; left: 1mm; width: 7mm; height: 7mm; image-rendering: pixelated;" />
-      <img src="data:image/svg+xml;base64,${L_LB_B64}" style="position: absolute; top: 70%; left: 1mm; width: 7mm; height: 7mm; image-rendering: pixelated;" />
+      <img src="data:image/svg+xml;base64,${L_LT_B64}" style="position: absolute; top: 30%; left: 1mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
+      <img src="data:image/svg+xml;base64,${L_LB_B64}" style="position: absolute; top: 70%; left: 1mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
       <!-- Right side: top at ~30%, bottom at ~70% -->
-      <img src="data:image/svg+xml;base64,${L_RT_B64}" style="position: absolute; top: 30%; right: 1mm; width: 7mm; height: 7mm; image-rendering: pixelated;" />
-      <img src="data:image/svg+xml;base64,${L_RB_B64}" style="position: absolute; top: 70%; right: 1mm; width: 7mm; height: 7mm; image-rendering: pixelated;" />
+      <img src="data:image/svg+xml;base64,${L_RT_B64}" style="position: absolute; top: 30%; right: 1mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
+      <img src="data:image/svg+xml;base64,${L_RB_B64}" style="position: absolute; top: 70%; right: 1mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
 
       <!-- Cabeçalho do Gabarito com QR Code -->
       <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #ccc; padding-bottom: 3mm; margin-bottom: 3mm;">

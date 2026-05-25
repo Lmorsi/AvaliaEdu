@@ -8,27 +8,18 @@ import numpy as np
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 
 from omr.fiducial import detect_fiducials, draw_fiducials
 from omr.perspective import correct_perspective
 from omr.qr_reader import read_qr
-from omr.models import ScanResponse, ScanErrorResponse
+from omr.models import ScanResponse, ScanErrorResponse, BubbleResult, BubbleGrid
 
 # Configuração de logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-# --- Bubble detection (kept inline for self-contained service) ---
-
-class BubbleGrid(BaseModel):
-    row: int
-    bubbles: List[Dict[str, Any]]
-
-class BubbleResult(BaseModel):
-    found: bool
-    grids: List[BubbleGrid]
+# --- Bubble detection ---
 
 
 def _find_circles(gray: np.ndarray, min_area: int = 150, max_area: int = 1000) -> List[Tuple[int, int, int, int]]:

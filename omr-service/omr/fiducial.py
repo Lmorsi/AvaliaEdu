@@ -8,11 +8,12 @@ The answer sheet has four L-shaped markers on the left and right sides:
   Right bot  (~70%) = marker opening leftward   (┘ shape, lower)
 
 Each marker is a solid black "L" made of two perpendicular bars.
-Detection uses contour analysis: find L-shaped contours by checking
-the bounding box fill pattern (two perpendicular rectangular regions).
+Detection uses contour analysis with convexity defects to identify
+L-shapes: they have exactly one large convexity defect (the inner
+corner of the L).
 
 More robust than ArUco for scanned/photographed answer sheets because:
-  - Larger markers (7mm vs 5mm) survive lower resolution
+  - Larger markers (7mm) survive lower resolution
   - Simple shape survives blur and perspective distortion
   - No dependency on opencv-contrib
 """
@@ -27,106 +28,78 @@ from omr.models import FiducialResult
 
 logger = logging.getLogger(__name__)
 
-# Minimum area for an L-marker contour (pixels^2) — tuned for 7mm markers
-_MIN_MARKER_AREA = 200
-_MAX_MARKER_AREA = 15000
-
-# Circularity range for L-shapes (lower than circles, ~0.4-0.7)
-_MIN_CIRCULARITY = 0.25
-_MAX_CIRCULARITY = 0.75
-
-# Aspect ratio for L-markers: roughly square bounding box
-_MIN_ASPECT = 0.5
-_MAX_ASPECT = 2.0
+# Area range for L-marker contours (tuned for 7mm markers at various scan resolutions)
+_MIN_MARKER_AREA = 100
+_MAX_MARKER_AREA = 20000
 
 
 def _order_points(pts: np.ndarray) -> np.ndarray:
     """
     Order four points as: top-left, top-right, bottom-right, bottom-left.
-    Uses centroid-based angle calculation for robust ordering in any orientation.
     """
-    rect = np.zeros((4, 2), dtype="float32")
-
     cx = pts[:, 0].mean()
     cy = pts[:, 1].mean()
-
     angles = np.arctan2(pts[:, 1] - cy, pts[:, 0] - cx)
-    sorted_indices = np.argsort(angles)
-    sorted_pts = pts[sorted_indices]
-
+    sorted_pts = pts[np.argsort(angles)]
     min_y_idx = np.argmin(sorted_pts[:, 1])
-    rect = np.roll(sorted_pts, -min_y_idx, axis=0)
-
-    return rect
+    return np.roll(sorted_pts, -min_y_idx, axis=0)
 
 
 def _is_l_shape(contour: np.ndarray) -> bool:
     """
-    Check if a contour resembles an L-shape by analyzing the spatial
-    distribution of points within its bounding box.
+    Check if a contour resembles an L-shape using convexity defects.
 
-    An L-shape has two perpendicular bars, so points cluster in two
-    perpendicular rectangular regions sharing a corner.
+    An L-shape has exactly one large convexity defect — the inner corner
+    where the two bars meet. This is more robust than quadrant analysis
+    because it works regardless of the L's orientation or bar thickness.
     """
-    x, y, w, h = cv2.boundingRect(contour)
-    if w < 10 or h < 10:
+    hull = cv2.convexHull(contour)
+    hull_area = cv2.contourArea(hull)
+    if hull_area < 1:
         return False
 
-    # Create a mask of the contour within its bounding box
-    mask = np.zeros((h, w), dtype=np.uint8)
-    shifted = contour - np.array([x, y])
-    cv2.drawContours(mask, [shifted], -1, 255, -1)
-
-    total_fill = np.count_nonzero(mask)
-    bounding_area = w * h
-    if bounding_area == 0:
+    # Solidity: L-shape fills roughly 50-80% of its convex hull
+    area = cv2.contourArea(contour)
+    solidity = area / hull_area
+    if solidity < 0.35 or solidity > 0.90:
         return False
 
-    # L-shape occupies roughly 50-75% of its bounding box
-    # (two bars sharing a corner: area = bar_w*h + w*bar_h - bar_w*bar_h)
-    fill_ratio = total_fill / bounding_area
-    if fill_ratio < 0.3 or fill_ratio > 0.85:
+    # Convexity defects: L-shapes have 1 large defect (the inner corner)
+    contour_closed = contour.reshape(-1, 1, 2).astype(np.int32)
+    hull_indices = cv2.convexHull(contour_closed, returnPoints=False)
+
+    if hull_indices is None or len(hull_indices) < 3:
         return False
 
-    # Check quadrant fill pattern: L-shape has one empty quadrant
-    # Divide bounding box into 4 quadrants
-    hw, hh = w // 2, h // 2
-    if hw == 0 or hh == 0:
+    try:
+        defects = cv2.convexityDefects(contour_closed, hull_indices)
+    except cv2.error:
         return False
 
-    q_tl = np.count_nonzero(mask[:hh, :hw])
-    q_tr = np.count_nonzero(mask[:hh, hw:])
-    q_bl = np.count_nonzero(mask[hh:, :hw])
-    q_br = np.count_nonzero(mask[hh:, hw:])
-
-    # An L-shape (e.g. └) fills TL+BL+TR quadrants, but BR is sparse
-    # For └: top bar fills TL+TR, left bar fills TL+BL -> BR is empty
-    # For ┘: top bar fills TL+TR, right bar fills TR+BR -> BL is empty
-    # For ┐: right bar fills TR+BR, top bar fills TL+TR -> BL is empty
-    # For └: bottom bar fills BL+BR, left bar fills TL+BL -> TR is empty
-
-    quadrant_fills = [q_tl, q_tr, q_bl, q_br]
-    max_q = max(quadrant_fills)
-    min_q = min(quadrant_fills)
-
-    if max_q == 0:
+    if defects is None:
         return False
 
-    # One quadrant should be significantly emptier than the others
-    emptiness_ratio = min_q / max_q if max_q > 0 else 1.0
-    has_empty_quadrant = emptiness_ratio < 0.4
+    # Count significant defects (depth > 10% of contour perimeter)
+    perimeter = cv2.arcLength(contour, True)
+    if perimeter < 1:
+        return False
 
-    # At least 3 quadrants should have significant fill
-    filled_quads = sum(1 for q in quadrant_fills if q > max_q * 0.15)
+    significant_defects = 0
+    for defect in defects:
+        # defect format: [start_idx, end_idx, farthest_pt_idx, depth]
+        depth = defect[0][3] / 256.0  # depth is fixed-point with 8 fractional bits
+        if depth > perimeter * 0.05:
+            significant_defects += 1
 
-    return has_empty_quadrant and filled_quads >= 2
+    # L-shape should have exactly 1 significant convexity defect
+    return significant_defects == 1
 
 
-def _detect_l_markers(image: np.ndarray) -> list[tuple[int, int]]:
+def _detect_l_markers(image: np.ndarray) -> list[tuple[int, int, int, int]]:
     """
     Detect L-shaped fiducial markers in a BGR image.
 
-    Returns a list of centroids (x, y) for each detected L-marker.
+    Returns a list of (cx, cy, w, h) bounding boxes for each detected L-marker.
     """
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
@@ -134,7 +107,7 @@ def _detect_l_markers(image: np.ndarray) -> list[tuple[int, int]]:
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
     _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
-    # Morphological close to connect bars of L-shape
+    # Morphological close to connect bars of L-shape into one contour
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
     processed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
 
@@ -142,7 +115,7 @@ def _detect_l_markers(image: np.ndarray) -> list[tuple[int, int]]:
 
     logger.info("L-marker detection: found %d external contours", len(contours))
 
-    centroids = []
+    markers = []
     for contour in contours:
         area = cv2.contourArea(contour)
         if area < _MIN_MARKER_AREA or area > _MAX_MARKER_AREA:
@@ -150,17 +123,9 @@ def _detect_l_markers(image: np.ndarray) -> list[tuple[int, int]]:
 
         x, y, w, h = cv2.boundingRect(contour)
 
-        # Aspect ratio: L-markers are roughly square
+        # Aspect ratio: L-markers are roughly square (0.4 to 2.5)
         aspect = w / h if h > 0 else 0
-        if aspect < _MIN_ASPECT or aspect > _MAX_ASPECT:
-            continue
-
-        # Circular filter: L-shapes have moderate circularity
-        perimeter = cv2.arcLength(contour, True)
-        if perimeter < 1:
-            continue
-        circularity = 4 * np.pi * area / (perimeter * perimeter)
-        if circularity < _MIN_CIRCULARITY or circularity > _MAX_CIRCULARITY:
+        if aspect < 0.4 or aspect > 2.5:
             continue
 
         # Check if contour looks like an L
@@ -169,62 +134,56 @@ def _detect_l_markers(image: np.ndarray) -> list[tuple[int, int]]:
 
         cx = int(x + w / 2)
         cy = int(y + h / 2)
-        centroids.append((cx, cy))
+        markers.append((cx, cy, w, h))
         logger.info(
-            "L-marker: cx=%d, cy=%d, w=%d, h=%d, area=%d, circ=%.3f",
-            cx, cy, w, h, area, circularity,
+            "L-marker: cx=%d, cy=%d, w=%d, h=%d, area=%d",
+            cx, cy, w, h, area,
         )
 
-    logger.info("L-marker detection: %d valid markers found", len(centroids))
-    return centroids
+    logger.info("L-marker detection: %d valid markers found", len(markers))
+    return markers
 
 
 def _classify_l_markers(
-    centroids: list[tuple[int, int]],
+    markers: list[tuple[int, int, int, int]],
     img_width: int,
     img_height: int,
 ) -> list[tuple[int, int]]:
     """
-    Classify 4 detected L-markers into the expected positions:
-      Left-top, Left-bottom, Right-top, Right-bottom.
+    Classify detected L-markers into 4 expected positions:
+      Left-top, Right-top, Right-bottom, Left-bottom.
 
     Uses x-coordinate to split left/right, then y-coordinate to split top/bottom.
 
     Returns ordered list: [left_top, right_top, right_bottom, left_bottom]
-    (clockwise from top-left, matching perspective.py expected order)
     """
-    if len(centroids) != 4:
-        return centroids
-
     mid_x = img_width / 2
-    mid_y = img_height / 2
 
-    left = sorted([c for c in centroids if c[0] < mid_x], key=lambda p: p[1])
-    right = sorted([c for c in centroids if c[0] >= mid_x], key=lambda p: p[1])
+    left = [m for m in markers if m[0] < mid_x]
+    right = [m for m in markers if m[0] >= mid_x]
 
-    # Handle edge case: all on one side
-    if not left:
-        left = centroids[:2]
-        right = centroids[2:]
-    elif not right:
-        right = left[2:]
-        left = left[:2]
+    # Sort each side by y-coordinate
+    left.sort(key=lambda m: m[1])
+    right.sort(key=lambda m: m[1])
 
-    # Ensure 2 per side
+    logger.info("L-marker classification: left=%d, right=%d", len(left), len(right))
+
+    # If uneven distribution, re-split using sorted x-coordinates
     if len(left) < 2 or len(right) < 2:
-        logger.warning("L-marker classification: uneven split L=%d R=%d", len(left), len(right))
-        # Fallback: just sort all by position
-        all_sorted = sorted(centroids, key=lambda p: (p[1], p[0]))
-        if len(all_sorted) >= 4:
-            left = all_sorted[:2]
-            right = all_sorted[2:]
+        sorted_by_x = sorted(markers, key=lambda m: m[0])
+        left = sorted_by_x[:2]
+        right = sorted_by_x[2:] if len(sorted_by_x) > 2 else sorted_by_x[2:]
+        left.sort(key=lambda m: m[1])
+        right.sort(key=lambda m: m[1])
+        logger.info("L-marker re-split: left=%d, right=%d", len(left), len(right))
 
-    left_top = left[0] if len(left) > 0 else (0, 0)
-    left_bottom = left[-1] if len(left) > 1 else (0, img_height)
-    right_top = right[0] if len(right) > 0 else (img_width, 0)
-    right_bottom = right[-1] if len(right) > 1 else (img_width, img_height)
+    # Pick top and bottom from each side
+    left_top = left[0][:2] if len(left) > 0 else (0, 0)
+    left_bottom = left[-1][:2] if len(left) > 1 else (0, img_height)
+    right_top = right[0][:2] if len(right) > 0 else (img_width, 0)
+    right_bottom = right[-1][:2] if len(right) > 1 else (img_width, img_height)
 
-    # Return in TL, TR, BR, BL order
+    # TL, TR, BR, BL order
     return [left_top, right_top, right_bottom, left_bottom]
 
 
@@ -237,35 +196,33 @@ def detect_fiducials(image: np.ndarray) -> FiducialResult:
     """
     original_h, original_w = image.shape[:2]
 
-    # Resize for stable detection
     scale = 900 / original_w
     new_h = int(original_h * scale)
     resized = cv2.resize(image, (900, new_h), interpolation=cv2.INTER_AREA)
     scale_x = original_w / 900
     scale_y = original_h / new_h
 
-    centroids = _detect_l_markers(resized)
+    markers = _detect_l_markers(resized)
 
-    if len(centroids) != 4:
+    if len(markers) < 4:
         logger.warning(
-            "L-markers: expected 4, found %d at positions: %s",
-            len(centroids),
-            centroids,
+            "L-markers: expected 4, found %d",
+            len(markers),
         )
+        return FiducialResult(found=False, count=len(markers))
 
-        if len(centroids) < 4:
-            return FiducialResult(found=False, count=len(centroids))
-
-        # If we found more than 4, keep the 4 that best match expected positions
-        # (2 on left side, 2 on right side, at ~30% and ~70% height)
-        classified = _classify_l_markers(centroids, 900, new_h)
+    # If more than 4 found, keep the 4 most likely markers
+    # (pick ones closest to expected positions: 2 left, 2 right, at ~30%/70% height)
+    if len(markers) > 4:
+        classified = _classify_l_markers(markers, 900, new_h)
         centroids = classified
-
-    classified = _classify_l_markers(centroids, 900, new_h)
+    else:
+        classified = _classify_l_markers(markers, 900, new_h)
+        centroids = classified
 
     corners = [
         [float(x * scale_x), float(y * scale_y)]
-        for x, y in classified
+        for x, y in centroids
     ]
 
     logger.info("L-marker corners (TL,TR,BR,BL): %s", corners)
@@ -277,7 +234,7 @@ def draw_fiducials(image: np.ndarray, result: FiducialResult) -> np.ndarray:
     """Draw detected L-shaped markers on a copy of the image (for debugging)."""
     annotated = image.copy()
 
-    # Re-detect and draw raw L-marker contours for visibility
+    # Re-detect and draw raw L-marker contours
     gray = cv2.cvtColor(annotated, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
     _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
