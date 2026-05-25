@@ -151,7 +151,7 @@ const generateAnswerSheet = async (finalData) => {
 
       validAlternatives.forEach((_, altIndex) => {
         questionHTML += `
-          <div class="bubble" style="width: 4.5mm; height: 4.5mm; border: 1.2px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center; font-size: 7px; font-weight: bold; color: #333;">${String.fromCharCode(65 + altIndex)}</div>
+          <div class="bubble" style="width: 4.5mm; height: 4.5mm; border: 1.2px solid #333; border-radius: 0%; background: white; display: flex; align-items: center; justify-content: center; font-size: 7px; font-weight: bold; color: #333;">${String.fromCharCode(65 + altIndex)}</div>
         `;
       });
 
@@ -173,8 +173,8 @@ const generateAnswerSheet = async (finalData) => {
         questionHTML += `
           <div style="display: flex; align-items: center; gap: 1mm; margin: 0.5mm 0 0.5mm 4mm;">
             <span style="font-size: 7px; font-weight: bold; min-width: 3mm;">${afirmIndex + 1}:</span>
-            <div class="bubble" style="width: 4mm; height: 4mm; border: 1.2px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center; font-size: 6px; font-weight: bold; color: #333;">V</div>
-            <div class="bubble" style="width: 4mm; height: 4mm; border: 1.2px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center; font-size: 6px; font-weight: bold; color: #333;">F</div>
+            <div class="bubble" style="width: 4mm; height: 4mm; border: 1.2px solid #333; border-radius: 0%; background: white; display: flex; align-items: center; justify-content: center; font-size: 6px; font-weight: bold; color: #333;">V</div>
+            <div class="bubble" style="width: 4mm; height: 4mm; border: 1.2px solid #333; border-radius: 0%; background: white; display: flex; align-items: center; justify-content: center; font-size: 6px; font-weight: bold; color: #333;">F</div>
           </div>
         `;
       });
