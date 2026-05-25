@@ -100,16 +100,35 @@ def _detect_l_markers(image: np.ndarray) -> list[tuple[int, int, int, int]]:
     Detect L-shaped fiducial markers in a BGR image.
 
     Returns a list of (cx, cy, w, h) bounding boxes for each detected L-marker.
+    More robust preprocessing for faint/pale markers from photo scans.
     """
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    # Adaptive threshold for robust detection across lighting
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    # CLAHE (Contrast Limited Adaptive Histogram Equalization) to brighten faint markers
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
 
-    # Morphological close to connect bars of L-shape into one contour
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-    processed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
+    # Try multiple thresholding strategies to catch faint black markers
+    thresholds = []
+
+    # Strategy 1: OTSU on enhanced image
+    blurred = cv2.GaussianBlur(enhanced, (5, 5), 0)
+    _, thresh1 = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    thresholds.append(("OTSU", thresh1))
+
+    # Strategy 2: Manual threshold on original gray (catch very dark areas)
+    _, thresh2 = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY_INV)
+    thresholds.append(("Manual@100", thresh2))
+
+    # Combine thresholds: take union (logical OR)
+    combined = cv2.bitwise_or(thresh1, thresh2)
+
+    # Morphological operations to clean and connect bars
+    kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    opened = cv2.morphologyEx(combined, cv2.MORPH_OPEN, kernel_open, iterations=1)
+
+    kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
+    processed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel_close, iterations=2)
 
     contours, _ = cv2.findContours(processed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -123,9 +142,9 @@ def _detect_l_markers(image: np.ndarray) -> list[tuple[int, int, int, int]]:
 
         x, y, w, h = cv2.boundingRect(contour)
 
-        # Aspect ratio: L-markers are roughly square (0.4 to 2.5)
+        # Aspect ratio: L-markers are roughly square (0.4 to 2.5, relaxed from 0.5-2.0)
         aspect = w / h if h > 0 else 0
-        if aspect < 0.4 or aspect > 2.5:
+        if aspect < 0.3 or aspect > 3.0:
             continue
 
         # Check if contour looks like an L
@@ -136,7 +155,7 @@ def _detect_l_markers(image: np.ndarray) -> list[tuple[int, int, int, int]]:
         cy = int(y + h / 2)
         markers.append((cx, cy, w, h))
         logger.info(
-            "L-marker: cx=%d, cy=%d, w=%d, h=%d, area=%d",
+            "L-marker: cx=%d, cy=%d, w=%d, h=%d, area=%.0f",
             cx, cy, w, h, area,
         )
 

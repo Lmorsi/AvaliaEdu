@@ -22,15 +22,23 @@ logger = logging.getLogger(__name__)
 # --- Bubble detection ---
 
 
-def _find_circles(gray: np.ndarray, min_area: int = 150, max_area: int = 1000) -> List[Tuple[int, int, int, int]]:
+def _find_circles(gray: np.ndarray, min_area: int = 120, max_area: int = 1500) -> List[Tuple[int, int, int, int]]:
     """
     Find circular answer bubbles in a grayscale image.
-    Optimized for 18px circles with 12px+ spacing.
+    Tuned for ~18-22px circles (when image is 1240px wide).
     """
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    # CLAHE to enhance edges of bubbles in low-light scans
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
 
+    # Multiple thresholding strategies
+    _, thresh1 = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    _, thresh2 = cv2.threshold(enhanced, 100, 255, cv2.THRESH_BINARY_INV)
+    processed = cv2.bitwise_or(thresh1, thresh2)
+
+    # Morphological cleanup
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    processed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=1)
+    processed = cv2.morphologyEx(processed, cv2.MORPH_CLOSE, kernel, iterations=1)
 
     contours, _ = cv2.findContours(processed, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -41,25 +49,26 @@ def _find_circles(gray: np.ndarray, min_area: int = 150, max_area: int = 1000) -
             continue
 
         x, y, w, h = cv2.boundingRect(contour)
-        if w < 12 or h < 12:
+        if w < 11 or h < 11:
             continue
 
+        # More relaxed aspect ratio (allow slightly oval bubbles from scanning)
         aspect_ratio = float(w) / h if h > 0 else 0
-        if aspect_ratio < 0.8 or aspect_ratio > 1.2:
+        if aspect_ratio < 0.75 or aspect_ratio > 1.35:
             continue
 
         perimeter = cv2.arcLength(contour, True)
         if perimeter < 1:
             continue
         circularity = 4 * np.pi * area / (perimeter * perimeter)
-        if circularity < 0.75:
+        if circularity < 0.70:
             continue
 
         hull = cv2.convexHull(contour)
         hull_area = cv2.contourArea(hull)
         if hull_area > 0:
             solidity = area / hull_area
-            if solidity < 0.75:
+            if solidity < 0.70:
                 continue
 
         circles.append((x, y, w, h))
@@ -71,22 +80,48 @@ def _find_circles(gray: np.ndarray, min_area: int = 150, max_area: int = 1000) -
 def _calculate_fill_percentage(
     gray: np.ndarray, x: int, y: int, w: int, h: int, threshold: int = 130
 ) -> float:
+    """
+    Calculate percentage of dark pixels inside a bubble (marks).
+    Higher value = more filled/marked.
+
+    Uses multiple thresholds and takes the maximum to handle varying lighting:
+      - OTSU on local region
+      - Manual threshold at 130 (tuned for pens on white)
+    """
     y1, y2 = max(0, y), min(gray.shape[0], y + h)
     x1, x2 = max(0, x), min(gray.shape[1], x + w)
     roi = gray[y1:y2, x1:x2]
     if roi.size == 0:
         return 0.0
-    _, roi_thresh = cv2.threshold(roi, threshold, 255, cv2.THRESH_BINARY_INV)
-    dark_pixels = cv2.countNonZero(roi_thresh)
+
+    # Apply CLAHE to enhance contrast locally
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
+    roi_enhanced = clahe.apply(roi)
+
+    # Strategy 1: OTSU on enhanced region
+    _, roi_thresh1 = cv2.threshold(roi_enhanced, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    # Strategy 2: Manual threshold (dark = < 130)
+    _, roi_thresh2 = cv2.threshold(roi_enhanced, threshold, 255, cv2.THRESH_BINARY_INV)
+
+    # Take union: any pixel that's dark in either threshold
+    roi_combined = cv2.bitwise_or(roi_thresh1, roi_thresh2)
+
+    dark_pixels = cv2.countNonZero(roi_combined)
     total_pixels = roi.size
     if total_pixels == 0:
         return 0.0
+
     return float(dark_pixels) / float(total_pixels)
 
 
 def _cluster_circles(
-    circles: List[Tuple[int, int, int, int]], tolerance: int = 15
+    circles: List[Tuple[int, int, int, int]], tolerance: int = 20
 ) -> List[List[Tuple[int, int, int, int]]]:
+    """
+    Cluster circles into rows by y-coordinate.
+    Tolerance allows for slight vertical misalignment of bubbles.
+    """
     if not circles:
         return []
     sorted_circles = sorted(circles, key=lambda b: b[1])
@@ -101,6 +136,7 @@ def _cluster_circles(
             current_row = [circle]
     if len(current_row) > 0:
         rows.append(sorted(current_row, key=lambda b: b[0]))
+    # Accept rows with 2+ bubbles (might be just A/B or might be A/B/C/D)
     filtered_rows = [row for row in rows if len(row) >= 2]
     return filtered_rows
 
@@ -108,7 +144,7 @@ def _cluster_circles(
 def detect_bubbles(
     image: np.ndarray,
     fill_threshold: int = 150,
-    marked_percentage: float = 0.25,
+    marked_percentage: float = 0.40,
 ) -> BubbleResult:
     if image is None or image.size == 0:
         return BubbleResult(found=False, grids=[])
