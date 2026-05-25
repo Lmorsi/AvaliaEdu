@@ -59,6 +59,7 @@ def correct_perspective(
 
     Returns:
         Perspective-corrected image, or None if transformation fails.
+        If the resulting image is portrait (height > width), it will be rotated to landscape.
     """
     if not corners or len(corners) != 4:
         logger.warning("Cannot correct perspective: need exactly 4 corners")
@@ -96,6 +97,12 @@ def correct_perspective(
             borderValue=(255, 255, 255),
         )
         logger.info("Perspective correction applied: %dx%d", target_width, target_height)
+
+        # Check if result is portrait (height > width) - should be landscape
+        if warped.shape[0] > warped.shape[1]:
+            logger.info("Result is portrait (H=%d > W=%d), rotating 90° clockwise to landscape", warped.shape[0], warped.shape[1])
+            warped = cv2.rotate(warped, cv2.ROTATE_90_CLOCKWISE)
+
         return warped
     except Exception as e:
         logger.error("Perspective warp failed: %s", str(e))
