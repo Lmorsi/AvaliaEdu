@@ -7,7 +7,6 @@ import numpy as np
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -22,203 +21,187 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class BubbleGrid(BaseModel):
-    row: int
-    bubbles: List[Dict[str, Any]]
-
-class BubbleResult(BaseModel):
-    found: bool
-    grids: List[BubbleGrid]
-
-def detect_answer_regions_simple(image: np.ndarray) -> Tuple[bool, List[List[Dict[str, Any]]]]:
+def preprocess_for_bubble_detection(image: np.ndarray) -> np.ndarray:
     """
-    Método simplificado para detectar regiões de resposta.
-    Retorna tupla (sucesso, lista de grades)
+    Pré-processamento para destacar apenas as bolhas/quadrados da folha de respostas.
     """
-    if image is None:
-        return False, []
-    
     # Converter para grayscale
     if len(image.shape) == 3:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     else:
         gray = image
     
-    h, w = gray.shape
-    
-    # Definir a região onde as bolhas estão
-    start_y = int(h * 0.20)
-    end_y = int(h * 0.85)
-    start_x = int(w * 0.10)
-    end_x = int(w * 0.90)
-    
-    # Número esperado de linhas e colunas
-    expected_rows = 5
-    expected_cols = 5
-    
-    # Calcular tamanho de cada célula
-    cell_height = (end_y - start_y) // expected_rows
-    cell_width = (end_x - start_x) // expected_cols
-    
-    # Analisar cada célula
-    grids = []
-    
-    for row in range(expected_rows):
-        grid_row = []
-        y1 = start_y + (row * cell_height)
-        y2 = y1 + cell_height
-        
-        for col in range(expected_cols):
-            x1 = start_x + (col * cell_width)
-            x2 = x1 + cell_width
-            
-            # Extrair a região
-            roi = gray[y1:y2, x1:x2]
-            
-            if roi.size == 0:
-                fill_pct = 0.0
-            else:
-                # Calcular a média de intensidade (0=preto, 255=branco)
-                mean_intensity = np.mean(roi)
-                # Quanto mais baixa a média, mais escura (marcada)
-                # Normalizar: 0 = completamente branco, 1 = completamente preto
-                darkness = 1.0 - (mean_intensity / 255.0)
-                # Aplicar um fator de correção
-                if roi.size < 50:
-                    darkness = darkness * 1.2
-                fill_pct = float(min(1.0, max(0.0, darkness)))
-            
-            # Determinar se está marcada (limiar de 15% de escuridão)
-            is_marked = fill_pct > 0.15
-            
-            # Centro da região
-            center_x = int(x1 + cell_width // 2)
-            center_y = int(y1 + cell_height // 2)
-            
-            grid_row.append({
-                "col": int(col),
-                "x": int(center_x),
-                "y": int(center_y),
-                "radius": int(min(cell_width, cell_height) // 2),
-                "fill_percentage": float(fill_pct),
-                "marked": bool(is_marked),
-            })
-        
-        grids.append(grid_row)
-    
-    logger.info(f"Análise concluída: {len(grids)} linhas, cada uma com {len(grids[0]) if grids else 0} colunas")
-    
-    return True, grids
-
-def detect_answer_regions_contour(image: np.ndarray) -> Tuple[bool, List[List[Dict[str, Any]]]]:
-    """
-    Método baseado em contornos para detectar as bolhas.
-    """
-    if image is None:
-        return False, []
-    
-    # Converter para grayscale
-    if len(image.shape) == 3:
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    else:
-        gray = image
-    
-    h, w = gray.shape
-    
-    # Suavizar a imagem
+    # Aplicar blur para reduzir ruído
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
     
-    # Aplicar threshold adaptativo
-    thresh = cv2.adaptiveThreshold(blurred, 255, 
-                                   cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                   cv2.THRESH_BINARY_INV, 11, 2)
+    # Usar Canny edge detection para encontrar bordas
+    edges = cv2.Canny(blurred, 50, 150)
     
-    # Operações morfológicas para limpar ruído
-    kernel = np.ones((2, 2), np.uint8)
-    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
-    thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+    # Dilatar bordas para conectar contornos
+    kernel = np.ones((3, 3), np.uint8)
+    dilated = cv2.dilate(edges, kernel, iterations=2)
+    
+    return dilated
+
+def find_actual_bubbles(image: np.ndarray) -> List[Tuple[int, int, int, int]]:
+    """
+    Encontra apenas as bolhas/quadrados reais na folha de respostas.
+    """
+    # Pré-processar
+    processed = preprocess_for_bubble_detection(image)
     
     # Encontrar contornos
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(processed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
-    # Filtrar contornos que parecem bolhas
-    bubbles = []
-    min_area = 30
-    max_area = 1000
+    actual_bubbles = []
     
     for contour in contours:
         area = cv2.contourArea(contour)
-        if min_area < area < max_area:
-            x, y, w_box, h_box = cv2.boundingRect(contour)
-            # Verificar proporção
-            aspect_ratio = w_box / h_box if h_box > 0 else 0
-            if 0.5 < aspect_ratio < 2.0:
-                bubbles.append((x, y, w_box, h_box))
+        
+        # Filtrar por área (bolhas devem ter tamanho similar)
+        # Ajuste esses valores conforme sua imagem
+        if area < 50 or area > 800:
+            continue
+        
+        # Obter bounding box
+        x, y, w, h = cv2.boundingRect(contour)
+        
+        # Verificar proporção (bolhas são aproximadamente quadradas)
+        aspect_ratio = w / h if h > 0 else 0
+        if aspect_ratio < 0.7 or aspect_ratio > 1.3:
+            continue
+        
+        # Verificar se o contorno é convexo (bolhas são convexas)
+        if cv2.isContourConvex(contour):
+            actual_bubbles.append((x, y, w, h))
     
-    if len(bubbles) < 5:
-        logger.warning(f"Poucas bolhas detectadas via contorno: {len(bubbles)}")
-        return False, []
+    return actual_bubbles
+
+def organize_bubbles_in_grid(bubbles: List[Tuple[int, int, int, int]]) -> List[List[Dict[str, Any]]]:
+    """
+    Organiza as bolhas detectadas em uma grade (linhas e colunas).
+    """
+    if not bubbles:
+        return []
     
-    # Organizar em grid
-    bubbles.sort(key=lambda b: b[1])  # Ordenar por Y
+    # Ordenar por Y (linha)
+    bubbles.sort(key=lambda b: b[1])
     
-    # Agrupar por linhas
+    # Agrupar por linhas (diferença Y menor que altura média)
+    avg_height = np.mean([h for (_, _, _, h) in bubbles])
+    y_threshold = avg_height * 0.8  # 80% da altura média
+    
     rows = []
     current_row = [bubbles[0]]
-    y_tolerance = 20
     
     for bubble in bubbles[1:]:
-        if abs(bubble[1] - current_row[0][1]) <= y_tolerance:
+        if abs(bubble[1] - current_row[0][1]) <= y_threshold:
             current_row.append(bubble)
         else:
-            if len(current_row) >= 3:
-                current_row.sort(key=lambda b: b[0])  # Ordenar por X
-                rows.append(current_row)
+            # Ordenar linha por X
+            current_row.sort(key=lambda b: b[0])
+            rows.append(current_row)
             current_row = [bubble]
     
-    if len(current_row) >= 3:
+    # Adicionar última linha
+    if current_row:
         current_row.sort(key=lambda b: b[0])
         rows.append(current_row)
     
-    if not rows:
-        return False, []
+    # Filtrar linhas com número adequado de bolhas (geralmente 5)
+    rows = [row for row in rows if len(row) >= 3]  # Mínimo 3 bolhas por linha
     
-    # Analisar cada bolha
-    grids = []
-    for row_idx, row in enumerate(rows):
-        grid_row = []
-        for col_idx, (x, y, w_box, h_box) in enumerate(row):
-            # Analisar preenchimento
-            roi = gray[y:y+h_box, x:x+w_box]
+    return rows
+
+def analyze_bubble_fill(image: np.ndarray, x: int, y: int, w: int, h: int) -> float:
+    """
+    Analisa se uma bolha está preenchida com base na escuridão da região.
+    """
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image
+    
+    # Extrair região da bolha
+    y1 = max(0, y)
+    y2 = min(gray.shape[0], y + h)
+    x1 = max(0, x)
+    x2 = min(gray.shape[1], x + w)
+    
+    roi = gray[y1:y2, x1:x2]
+    
+    if roi.size == 0:
+        return 0.0
+    
+    # Calcular média de intensidade
+    mean_intensity = np.mean(roi)
+    
+    # Quanto mais escuro (menor valor), mais preenchido
+    # Normalizar: 0 = branco (não preenchido), 1 = preto (completamente preenchido)
+    fill_percentage = 1.0 - (mean_intensity / 255.0)
+    
+    return min(1.0, max(0.0, fill_percentage))
+
+def detect_prefilled_bubbles(image: np.ndarray) -> List[List[Dict[str, Any]]]:
+    """
+    Pipeline completa de detecção de bolhas.
+    """
+    # 1. Encontrar todas as bolhas na imagem
+    bubbles = find_actual_bubbles(image)
+    
+    if not bubbles:
+        logger.warning("Nenhuma bolha encontrada na imagem")
+        return []
+    
+    logger.info(f"Encontradas {len(bubbles)} bolhas potenciais")
+    
+    # 2. Organizar em grid
+    grid = organize_bubbles_in_grid(bubbles)
+    
+    if not grid:
+        logger.warning("Não foi possível organizar bolhas em grid")
+        return []
+    
+    logger.info(f"Organizadas em {len(grid)} linhas")
+    
+    # 3. Analisar preenchimento de cada bolha
+    result_grid = []
+    
+    for row_idx, row in enumerate(grid):
+        result_row = []
+        
+        for col_idx, (x, y, w, h) in enumerate(row):
+            # Analisar quão preenchida está a bolha
+            fill_pct = analyze_bubble_fill(image, x, y, w, h)
             
-            if roi.size == 0:
-                fill_pct = 0.0
-            else:
-                mean_intensity = np.mean(roi)
-                darkness = 1.0 - (mean_intensity / 255.0)
-                if roi.size < 50:
-                    darkness = darkness * 1.2
-                fill_pct = float(min(1.0, max(0.0, darkness)))
+            # Determinar se está marcada (threshold de 20% de preenchimento)
+            is_marked = fill_pct > 0.20
             
-            is_marked = fill_pct > 0.15
+            # Centro da bolha
+            center_x = x + w // 2
+            center_y = y + h // 2
             
-            center_x = int(x + w_box // 2)
-            center_y = int(y + h_box // 2)
-            
-            grid_row.append({
-                "col": int(col_idx),
+            result_row.append({
+                "col": col_idx,
+                "row": row_idx,
                 "x": int(center_x),
                 "y": int(center_y),
-                "radius": int(max(w_box, h_box) // 2),
+                "width": int(w),
+                "height": int(h),
                 "fill_percentage": float(fill_pct),
-                "marked": bool(is_marked),
+                "marked": bool(is_marked)
             })
-        grids.append(grid_row)
+            
+            logger.debug(f"Bolha L{row_idx}C{col_idx}: preenchimento={fill_pct:.2%}, marcada={is_marked}")
+        
+        result_grid.append(result_row)
     
-    return True, grids
+    return result_grid
 
-def draw_annotated_image(image: np.ndarray, grids: List[List[Dict[str, Any]]]) -> np.ndarray:
-    """Desenha as bolhas detectadas na imagem."""
+def draw_bubbles_on_image(image: np.ndarray, bubbles_grid: List[List[Dict[str, Any]]]) -> np.ndarray:
+    """
+    Desenha as bolhas detectadas na imagem para visualização.
+    """
     annotated = image.copy()
     
     colors = {
@@ -226,24 +209,25 @@ def draw_annotated_image(image: np.ndarray, grids: List[List[Dict[str, Any]]]) -
         "unmarked": (0, 0, 255), # Vermelho
     }
     
-    for row in grids:
+    for row in bubbles_grid:
         for bubble in row:
-            cx = bubble["x"]
-            cy = bubble["y"]
-            radius = bubble["radius"]
+            x = bubble["x"] - bubble["width"] // 2
+            y = bubble["y"] - bubble["height"] // 2
+            w = bubble["width"]
+            h = bubble["height"]
+            
             color = colors["marked"] if bubble["marked"] else colors["unmarked"]
             
-            # Desenhar círculo
-            cv2.circle(annotated, (cx, cy), radius, color, 2)
+            # Desenhar retângulo ao redor da bolha
+            cv2.rectangle(annotated, (x, y), (x + w, y + h), color, 2)
             
-            # Adicionar porcentagem
-            fill_pct = bubble["fill_percentage"]
-            text = f"{fill_pct:.0%}"
-            cv2.putText(annotated, text, (cx - 15, cy - 10), 
+            # Adicionar porcentagem de preenchimento
+            text = f"{bubble['fill_percentage']:.0%}"
+            cv2.putText(annotated, text, (bubble["x"] - 15, bubble["y"] - 5),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
     
     # Adicionar legenda
-    cv2.putText(annotated, "VERDE: Marcada | VERMELHO: Nao marcada", 
+    cv2.putText(annotated, "VERDE: Marcada | VERMELHO: Nao marcada",
                (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
     
     return annotated
@@ -251,7 +235,7 @@ def draw_annotated_image(image: np.ndarray, grids: List[List[Dict[str, Any]]]) -
 @app.post("/api/omr/scan")
 async def scan_omr_sheet(photo: UploadFile = File(...), debug: bool = False):
     try:
-        # Ler imagem
+        # 1. Carregar imagem
         contents = await photo.read()
         nparr = np.frombuffer(contents, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -261,64 +245,55 @@ async def scan_omr_sheet(photo: UploadFile = File(...), debug: bool = False):
         
         logger.info(f"Imagem carregada: {image.shape}")
         
-        # Redimensionar se necessário
-        max_size = 1200
+        # 2. Redimensionar para tamanho padrão (opcional)
+        max_dimension = 1200
         h, w = image.shape[:2]
-        if max(w, h) > max_size:
-            scale = max_size / max(w, h)
+        if max(w, h) > max_dimension:
+            scale = max_dimension / max(w, h)
             new_w = int(w * scale)
             new_h = int(h * scale)
             image = cv2.resize(image, (new_w, new_h))
             logger.info(f"Imagem redimensionada para: {image.shape}")
         
-        # Tentar detectar por diferentes métodos
-        success, grids = detect_answer_regions_simple(image)
+        # 3. Detectar e analisar bolhas
+        bubbles_grid = detect_prefilled_bubbles(image)
         
-        if not success or not grids:
-            logger.info("Método simples falhou, tentando método de contornos")
-            success, grids = detect_answer_regions_contour(image)
+        if not bubbles_grid:
+            raise HTTPException(status_code=400, detail="Não foi possível detectar bolhas na imagem")
         
-        if not success or not grids:
-            raise HTTPException(status_code=400, detail="Não foi possível detectar as regiões de resposta")
-        
-        # Preparar resultado no formato esperado
-        bubbles_data = {
-            "found": True,
-            "grids": []
-        }
-        
-        for row_idx, row in enumerate(grids):
-            bubbles_data["grids"].append({
-                "row": row_idx,
-                "bubbles": row
-            })
-        
-        # Preparar resposta
+        # 4. Preparar resposta
         response_data = {
             "status": "success",
-            "bubbles": bubbles_data,
+            "total_rows": len(bubbles_grid),
+            "total_bubbles": sum(len(row) for row in bubbles_grid),
+            "bubbles": []
         }
         
+        # Adicionar dados das bolhas
+        for row in bubbles_grid:
+            for bubble in row:
+                response_data["bubbles"].append(bubble)
+        
+        # 5. Adicionar imagens de debug se solicitado
         if debug:
-            # Criar imagem anotada
-            annotated = draw_annotated_image(image, grids)
-            
-            # Codificar para base64
-            _, annotated_encoded = cv2.imencode('.png', annotated)
+            annotated_image = draw_bubbles_on_image(image, bubbles_grid)
+            _, annotated_encoded = cv2.imencode('.png', annotated_image)
             response_data["debug_image"] = base64.b64encode(annotated_encoded).decode('utf-8')
             response_data["corrected_image"] = base64.b64encode(annotated_encoded).decode('utf-8')
+        
+        logger.info(f"Processamento concluído: {len(bubbles_grid)} linhas, {response_data['total_bubbles']} bolhas")
         
         return JSONResponse(content=response_data)
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Erro: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Erro no processamento: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+    return {"status": "ok", "service": "OMR Bubble Detector"}
 
 if __name__ == "__main__":
     import uvicorn
