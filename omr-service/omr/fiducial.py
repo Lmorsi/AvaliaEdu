@@ -28,9 +28,10 @@ from omr.models import FiducialResult
 
 logger = logging.getLogger(__name__)
 
-# Area range for L-marker contours (tuned for 7mm markers at various scan resolutions)
-_MIN_MARKER_AREA = 100
-_MAX_MARKER_AREA = 20000
+# Area range for L-marker contours (tuned for 6mm markers with 2px bars at various scan resolutions)
+# 6mm @ 150 DPI (common scanning) = ~35px -> area ~ 20-100 after morphology
+_MIN_MARKER_AREA = 50
+_MAX_MARKER_AREA = 25000
 
 
 def _order_points(pts: np.ndarray) -> np.ndarray:
@@ -123,11 +124,11 @@ def _detect_l_markers(image: np.ndarray) -> list[tuple[int, int, int, int]]:
     # Combine thresholds: take union (logical OR)
     combined = cv2.bitwise_or(thresh1, thresh2)
 
-    # Morphological operations to clean and connect bars
-    kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    # Morphological operations: open to remove noise, close to connect bars
+    kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
     opened = cv2.morphologyEx(combined, cv2.MORPH_OPEN, kernel_open, iterations=1)
 
-    kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
+    kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
     processed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel_close, iterations=2)
 
     contours, _ = cv2.findContours(processed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
