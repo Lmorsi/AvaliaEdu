@@ -17,19 +17,19 @@ from omr.models import BubbleResult, BubbleGrid
 logger = logging.getLogger(__name__)
 
 
-def _find_checkboxes(gray: np.ndarray, min_area: int = 100, max_area: int = 5000) -> list[tuple[int, int, int, int]]:
+def _find_checkboxes(gray: np.ndarray, min_area: int = 15, max_area: int = 1000) -> list[tuple[int, int, int, int]]:
     """
     Find rectangular checkbox regions in a grayscale image.
 
     Returns list of (x, y, width, height) for each detected checkbox.
-    Uses contour detection and rectangle approximation.
+    Uses contour detection and circle/square detection.
     """
     # Apply Otsu's thresholding for better separation
     _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
-    # Apply morphological operations to enhance rectangles
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    gray_processed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
+    # Minimal morphological operations to avoid losing small shapes
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
+    gray_processed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=1)
 
     # Find contours
     contours, _ = cv2.findContours(gray_processed, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
@@ -42,30 +42,35 @@ def _find_checkboxes(gray: np.ndarray, min_area: int = 100, max_area: int = 5000
         if not (min_area < area < max_area):
             continue
 
-        # Approximate contour to polygon
-        epsilon = 0.03 * cv2.arcLength(contour, True)
-        approx = cv2.approxPolyDP(contour, epsilon, True)
-
-        # We want rectangles (4 vertices)
-        if len(approx) != 4:
-            continue
-
         # Get bounding rectangle
         x, y, w, h = cv2.boundingRect(contour)
 
-        # Check if it's roughly square (aspect ratio close to 1)
-        aspect_ratio = float(w) / h if h > 0 else 0
-        if aspect_ratio < 0.7 or aspect_ratio > 1.3:
-            logger.debug(f"Skipped: aspect_ratio={aspect_ratio:.2f} (not square-like)")
+        # Minimum size check (allow very small boxes - 3-4 pixels)
+        if w < 3 or h < 3:
             continue
 
-        # Ensure minimum size
-        if w < 12 or h < 12:
-            logger.debug(f"Skipped: size too small ({w}x{h})")
+        # Check if it's roughly square-like or circular (aspect ratio 0.6 to 1.4)
+        aspect_ratio = float(w) / h if h > 0 else 0
+        if aspect_ratio < 0.6 or aspect_ratio > 1.4:
+            continue
+
+        # Try to detect if it's filled (dark) or just outline
+        # This helps distinguish actual marked boxes from empty ones
+        roi = gray[max(0, y):min(gray.shape[0], y+h), max(0, x):min(gray.shape[1], x+w)]
+        if roi.size == 0:
+            continue
+
+        # Check circularity as additional filter (not too strict)
+        perimeter = cv2.arcLength(contour, True)
+        if perimeter < 1:
+            continue
+
+        circularity = 4 * np.pi * area / (perimeter * perimeter)
+        if circularity < 0.5:  # Very loose - accepts circles and squares
             continue
 
         checkboxes.append((x, y, w, h))
-        logger.info(f"Checkbox: x={x}, y={y}, w={w}, h={h}, aspect={aspect_ratio:.2f}, area={area:.0f}")
+        logger.info(f"Box: x={x}, y={y}, w={w}, h={h}, aspect={aspect_ratio:.2f}, circ={circularity:.3f}, area={area:.0f}")
 
     logger.info("Total checkboxes found: %d", len(checkboxes))
     return checkboxes
@@ -137,8 +142,8 @@ def _cluster_checkboxes(
 
 def detect_bubbles(
     image: np.ndarray,
-    fill_threshold: int = 130,
-    marked_percentage: float = 0.35,
+    fill_threshold: int = 150,
+    marked_percentage: float = 0.25,
 ) -> BubbleResult:
     """
     Detect and classify checkboxes as marked or unmarked.
