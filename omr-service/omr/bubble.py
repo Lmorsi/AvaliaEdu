@@ -1,8 +1,8 @@
 """
-Bubble reader for OMR answer sheets.
+Checkbox/Square reader for OMR answer sheets.
 
-Detects filled bubbles (marked circles) in the answer area of the sheet.
-Uses contour detection and circularity analysis to identify bubble regions
+Detects filled checkboxes (marked squares) in the answer area of the sheet.
+Uses contour detection and approximation to identify rectangular regions
 and determines fill percentage to classify as marked or unmarked.
 """
 
@@ -17,76 +17,77 @@ from omr.models import BubbleResult, BubbleGrid
 logger = logging.getLogger(__name__)
 
 
-def _find_bubbles(gray: np.ndarray, min_area: int = 80, max_area: int = 3000) -> list[tuple[int, int, int]]:
+def _find_checkboxes(gray: np.ndarray, min_area: int = 100, max_area: int = 5000) -> list[tuple[int, int, int, int]]:
     """
-    Find circular bubble regions in a grayscale image.
+    Find rectangular checkbox regions in a grayscale image.
 
-    Returns list of (cx, cy, radius) for each detected bubble.
-    Uses contour detection with circularity filtering to avoid detecting text.
+    Returns list of (x, y, width, height) for each detected checkbox.
+    Uses contour detection and rectangle approximation.
     """
     # Apply Otsu's thresholding for better separation
     _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
-    # Apply morphological operations to enhance circles and remove noise
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    # Apply morphological operations to enhance rectangles
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     gray_processed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
-    gray_processed = cv2.morphologyEx(gray_processed, cv2.MORPH_OPEN, kernel, iterations=1)
 
     # Find contours
     contours, _ = cv2.findContours(gray_processed, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
 
     logger.info("Found %d contours after morphology", len(contours))
 
-    bubbles = []
+    checkboxes = []
     for contour in contours:
         area = cv2.contourArea(contour)
         if not (min_area < area < max_area):
             continue
 
-        # Fit circle
-        (cx, cy), radius = cv2.minEnclosingCircle(contour)
-        if radius < 9:
+        # Approximate contour to polygon
+        epsilon = 0.03 * cv2.arcLength(contour, True)
+        approx = cv2.approxPolyDP(contour, epsilon, True)
+
+        # We want rectangles (4 vertices)
+        if len(approx) != 4:
             continue
 
-        # Check circularity: 4π * area / perimeter²
-        perimeter = cv2.arcLength(contour, True)
-        if perimeter < 1:
-            continue
-
-        circularity = 4 * np.pi * area / (perimeter * perimeter)
-        if circularity < 0.70:  # Moderately strict - rejects elongated text
-            continue
-
-        # Additional check: aspect ratio of bounding box should be close to 1
+        # Get bounding rectangle
         x, y, w, h = cv2.boundingRect(contour)
+
+        # Check if it's roughly square (aspect ratio close to 1)
         aspect_ratio = float(w) / h if h > 0 else 0
-        if abs(aspect_ratio - 1.0) > 0.3:  # Allow 30% deviation from square
+        if aspect_ratio < 0.7 or aspect_ratio > 1.3:
+            logger.debug(f"Skipped: aspect_ratio={aspect_ratio:.2f} (not square-like)")
             continue
 
-        bubbles.append((int(cx), int(cy), int(radius)))
-        logger.info(f"Bubble: cx={cx:.0f}, cy={cy:.0f}, r={radius:.0f}, area={area:.0f}, circ={circularity:.3f}, ar={aspect_ratio:.2f}")
+        # Ensure minimum size
+        if w < 12 or h < 12:
+            logger.debug(f"Skipped: size too small ({w}x{h})")
+            continue
 
-    logger.info("Total bubbles found: %d", len(bubbles))
-    return bubbles
+        checkboxes.append((x, y, w, h))
+        logger.info(f"Checkbox: x={x}, y={y}, w={w}, h={h}, aspect={aspect_ratio:.2f}, area={area:.0f}")
+
+    logger.info("Total checkboxes found: %d", len(checkboxes))
+    return checkboxes
 
 
 def _calculate_fill_percentage(
-    gray: np.ndarray, cx: int, cy: int, radius: int, threshold: int = 127
+    gray: np.ndarray, x: int, y: int, w: int, h: int, threshold: int = 130
 ) -> float:
     """
-    Calculate fill percentage of a bubble.
+    Calculate fill percentage of a checkbox region.
 
-    Counts dark pixels inside the bubble region and returns percentage.
+    Counts dark pixels inside the checkbox and returns percentage.
     """
-    y1, y2 = max(0, cy - radius), min(gray.shape[0], cy + radius)
-    x1, x2 = max(0, cx - radius), min(gray.shape[1], cx + radius)
+    y1, y2 = max(0, y), min(gray.shape[0], y + h)
+    x1, x2 = max(0, x), min(gray.shape[1], x + w)
 
     roi = gray[y1:y2, x1:x2]
-    mask = cv2.circle(np.zeros_like(roi), (radius, radius), radius, 255, -1)
-    mask = mask[:roi.shape[0], :roi.shape[1]]
+    if roi.size == 0:
+        return 0.0
 
-    dark_pixels = np.sum((roi < threshold) & (mask > 0))
-    total_pixels = np.sum(mask > 0)
+    dark_pixels = np.sum(roi < threshold)
+    total_pixels = roi.size
 
     if total_pixels == 0:
         return 0.0
@@ -94,34 +95,34 @@ def _calculate_fill_percentage(
     return float(dark_pixels) / float(total_pixels)
 
 
-def _cluster_bubbles(
-    bubbles: list[tuple[int, int, int]], tolerance: int = 35
-) -> list[list[tuple[int, int, int]]]:
+def _cluster_checkboxes(
+    checkboxes: list[tuple[int, int, int, int]], tolerance: int = 30
+) -> list[list[tuple[int, int, int, int]]]:
     """
-    Group bubbles into grid rows based on y-coordinate proximity.
+    Group checkboxes into grid rows based on y-coordinate proximity.
 
-    Bubbles within `tolerance` pixels vertically are grouped into rows.
+    Checkboxes within `tolerance` pixels vertically are grouped into rows.
     """
-    if not bubbles:
+    if not checkboxes:
         return []
 
     # Sort by y-coordinate
-    sorted_bubbles = sorted(bubbles, key=lambda b: b[1])
+    sorted_checkboxes = sorted(checkboxes, key=lambda b: b[1])
 
-    logger.info(f"Clustering {len(sorted_bubbles)} bubbles with tolerance={tolerance}")
+    logger.info(f"Clustering {len(sorted_checkboxes)} checkboxes with tolerance={tolerance}")
 
     rows = []
-    current_row = [sorted_bubbles[0]]
+    current_row = [sorted_checkboxes[0]]
 
-    for bubble in sorted_bubbles[1:]:
-        # If bubble is close to current row (within tolerance), add to row
-        if abs(bubble[1] - current_row[0][1]) <= tolerance:
-            current_row.append(bubble)
+    for checkbox in sorted_checkboxes[1:]:
+        # If checkbox is close to current row (within tolerance), add to row
+        if abs(checkbox[1] - current_row[0][1]) <= tolerance:
+            current_row.append(checkbox)
         else:
             # Start a new row
             if len(current_row) > 0:
                 rows.append(sorted(current_row, key=lambda b: b[0]))  # Sort by x within row
-            current_row = [bubble]
+            current_row = [checkbox]
 
     # Don't forget the last row
     if len(current_row) > 0:
@@ -129,7 +130,7 @@ def _cluster_bubbles(
 
     logger.info(f"Clustered into {len(rows)} rows")
     for i, row in enumerate(rows):
-        logger.debug(f"Row {i}: {len(row)} bubbles, y_positions: {[b[1] for b in row]}")
+        logger.debug(f"Row {i}: {len(row)} checkboxes, y_positions: {[b[1] for b in row]}")
 
     return rows
 
@@ -137,18 +138,18 @@ def _cluster_bubbles(
 def detect_bubbles(
     image: np.ndarray,
     fill_threshold: int = 130,
-    marked_percentage: float = 0.4,
+    marked_percentage: float = 0.35,
 ) -> BubbleResult:
     """
-    Detect and classify bubbles as marked or unmarked.
+    Detect and classify checkboxes as marked or unmarked.
 
     Args:
         image: BGR image (typically perspective-corrected)
         fill_threshold: Grayscale threshold for dark pixel detection (0-255)
-        marked_percentage: Fill % above which a bubble is considered marked
+        marked_percentage: Fill % above which a checkbox is considered marked
 
     Returns:
-        BubbleResult with grid of marked bubbles
+        BubbleResult with grid of marked checkboxes
     """
     if image is None or image.size == 0:
         logger.error("Image is empty or None")
@@ -159,60 +160,60 @@ def detect_bubbles(
     height, width = gray.shape
     logger.info("Image shape: %dx%d (H=%d, W=%d)", width, height, height, width)
 
-    # Find all bubbles
-    bubbles = _find_bubbles(gray)
-    if not bubbles:
-        logger.warning("No bubbles detected in image")
+    # Find all checkboxes
+    checkboxes = _find_checkboxes(gray)
+    if not checkboxes:
+        logger.warning("No checkboxes detected in image")
         return BubbleResult(found=False, grids=[])
 
-    logger.info("Found %d bubble candidates", len(bubbles))
+    logger.info("Found %d checkbox candidates", len(checkboxes))
 
-    # Filter bubbles that are outside image bounds (should not happen but safety check)
-    valid_bubbles = []
-    for cx, cy, r in bubbles:
-        if cx < 0 or cy < 0 or cx >= width or cy >= height:
-            logger.warning(f"Bubble at ({cx}, {cy}) outside image bounds [{width}x{height}], skipping")
+    # Filter checkboxes that are outside image bounds (safety check)
+    valid_checkboxes = []
+    for x, y, w, h in checkboxes:
+        if x < 0 or y < 0 or x + w > width or y + h > height:
+            logger.warning(f"Checkbox at ({x}, {y}, {w}, {h}) outside image bounds [{width}x{height}], skipping")
             continue
-        valid_bubbles.append((cx, cy, r))
+        valid_checkboxes.append((x, y, w, h))
 
-    if not valid_bubbles:
-        logger.warning("All bubble candidates were outside image bounds")
+    if not valid_checkboxes:
+        logger.warning("All checkbox candidates were outside image bounds")
         return BubbleResult(found=False, grids=[])
 
-    bubbles = valid_bubbles
-    logger.info("After filtering: %d valid bubbles", len(bubbles))
+    checkboxes = valid_checkboxes
+    logger.info("After filtering: %d valid checkboxes", len(checkboxes))
 
-    # Cluster bubbles into rows
-    rows = _cluster_bubbles(bubbles)
+    # Cluster checkboxes into rows
+    rows = _cluster_checkboxes(checkboxes)
     logger.info("Clustered into %d rows", len(rows))
 
-    # Classify each bubble as marked/unmarked
+    # Classify each checkbox as marked/unmarked
     grids = []
     for row_idx, row in enumerate(rows):
         grid_row = []
-        for col_idx, (cx, cy, radius) in enumerate(row):
-            fill_pct = _calculate_fill_percentage(gray, cx, cy, radius, fill_threshold)
+        for col_idx, (x, y, w, h) in enumerate(row):
+            fill_pct = _calculate_fill_percentage(gray, x, y, w, h, fill_threshold)
             is_marked = fill_pct >= marked_percentage
 
             grid_row.append({
                 "col": col_idx,
-                "x": cx,
-                "y": cy,
-                "radius": radius,
+                "x": x + w // 2,  # Return center x
+                "y": y + h // 2,  # Return center y
+                "radius": max(w, h) // 2,  # Return equivalent radius
                 "fill_percentage": fill_pct,
                 "marked": is_marked,
             })
 
-            logger.info(f"Row {row_idx}, Col {col_idx}: fill={fill_pct:.2%}, marked={is_marked}")
+            logger.info(f"Row {row_idx}, Col {col_idx}: fill={fill_pct:.2%}, marked={is_marked}, pos=({x},{y}), size=({w}x{h})")
 
         grids.append(BubbleGrid(row=row_idx, bubbles=grid_row))
 
-    logger.info("Detected %d rows with bubbles", len(grids))
+    logger.info("Detected %d rows with checkboxes", len(grids))
     return BubbleResult(found=True, grids=grids)
 
 
 def draw_bubbles(image: np.ndarray, result: BubbleResult) -> np.ndarray:
-    """Draw detected bubbles on a copy of the image (for debugging)."""
+    """Draw detected checkboxes on a copy of the image (for debugging)."""
     annotated = image.copy()
 
     colors = {
@@ -222,12 +223,17 @@ def draw_bubbles(image: np.ndarray, result: BubbleResult) -> np.ndarray:
 
     for grid in result.grids:
         for bubble in grid.bubbles:
-            cx, cy = bubble["x"], bubble["y"]
+            cx = bubble["x"]
+            cy = bubble["y"]
             radius = bubble["radius"]
             color = colors["marked"] if bubble["marked"] else colors["unmarked"]
 
-            # Draw circle
-            cv2.circle(annotated, (cx, cy), radius, color, 2)
+            # Draw rectangle around checkbox
+            x1 = max(0, cx - radius)
+            y1 = max(0, cy - radius)
+            x2 = min(annotated.shape[1], cx + radius)
+            y2 = min(annotated.shape[0], cy + radius)
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
 
             # Draw fill percentage text
             fill_pct = bubble["fill_percentage"]
