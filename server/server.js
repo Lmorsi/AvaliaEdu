@@ -144,14 +144,18 @@ const generateAnswerSheet = async (finalData) => {
       const validAlternatives = item.alternativas.filter(alt => alt && alt.trim() !== '');
 
       questionHTML += `
-        <div style="display: flex; align-items: center; margin: 1mm 0; break-inside: avoid;">
-          <span style="font-weight: bold; margin-right: 1.5mm; min-width: 6mm; font-size: 9px;">${questionNumber}</span>
-          <div style="display: flex; gap: 1mm; flex-wrap: wrap;">
+        <div style="display: flex; align-items: flex-start; margin: 1.5mm 0; break-inside: avoid;">
+          <span style="font-weight: bold; margin-right: 2mm; min-width: 6mm; font-size: 9px;">${questionNumber}</span>
+          <div style="display: flex; gap: 2mm; flex-wrap: wrap; align-items: flex-start;">
       `;
 
       validAlternatives.forEach((_, altIndex) => {
+        const letter = String.fromCharCode(65 + altIndex);
         questionHTML += `
-          <div class="bubble" style="width: 4.5mm; height: 4.5mm; border: 1.2px solid #333; border-radius: 0%; background: white; display: flex; align-items: center; justify-content: center; font-size: 7px; font-weight: bold; color: #333;">${String.fromCharCode(65 + altIndex)}</div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 0.5mm;">
+            <span style="font-size: 7px; font-weight: bold; color: #333; height: 2mm; line-height: 2mm;">${letter}</span>
+            <div class="bubble" style="width: 18px; height: 18px; border: 1.3px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
+          </div>
         `;
       });
 
@@ -171,10 +175,16 @@ const generateAnswerSheet = async (finalData) => {
 
       afirmativasValidas.forEach((_, afirmIndex) => {
         questionHTML += `
-          <div style="display: flex; align-items: center; gap: 1mm; margin: 0.5mm 0 0.5mm 4mm;">
+          <div style="display: flex; align-items: center; gap: 1.5mm; margin: 1mm 0 1mm 4mm;">
             <span style="font-size: 7px; font-weight: bold; min-width: 3mm;">${afirmIndex + 1}:</span>
-            <div class="bubble" style="width: 4mm; height: 4mm; border: 1.2px solid #333; border-radius: 0%; background: white; display: flex; align-items: center; justify-content: center; font-size: 6px; font-weight: bold; color: #333;">V</div>
-            <div class="bubble" style="width: 4mm; height: 4mm; border: 1.2px solid #333; border-radius: 0%; background: white; display: flex; align-items: center; justify-content: center; font-size: 6px; font-weight: bold; color: #333;">F</div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 0.3mm;">
+              <span style="font-size: 6px; font-weight: bold; color: #333; height: 1.5mm;">V</span>
+              <div class="bubble" style="width: 18px; height: 18px; border: 1.3px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 0.3mm;">
+              <span style="font-size: 6px; font-weight: bold; color: #333; height: 1.5mm;">F</span>
+              <div class="bubble" style="width: 18px; height: 18px; border: 1.3px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
+            </div>
           </div>
         `;
       });
