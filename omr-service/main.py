@@ -90,18 +90,19 @@ class BubbleResult(BaseModel):
     found: bool
     grids: List[BubbleGrid]
 
-def _find_checkboxes(gray: np.ndarray, min_area: int = 50, max_area: int = 2000) -> List[Tuple[int, int, int, int]]:
+def _find_checkboxes(gray: np.ndarray, min_area: int = 20, max_area: int = 3000) -> List[Tuple[int, int, int, int]]:
     """
     Find rectangular checkbox regions in a grayscale image.
     
     This version is more robust to finding both filled and unfilled bubbles.
+    Adjusted min_area and max_area for better sensitivity.
     """
     # Usar um thresholding adaptativo para realçar as bordas das bolhas
     thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
 
     # Operações morfológicas para fechar pequenos buracos e conectar contornos
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)) # Kernel menor para bolhas
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=1)
     thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
 
     # Encontrar contornos
@@ -111,33 +112,44 @@ def _find_checkboxes(gray: np.ndarray, min_area: int = 50, max_area: int = 2000)
     checkboxes = []
     for contour in cnts:
         area = cv2.contourArea(contour)
+        # Filtrar por área - ajuste min_area e max_area conforme o tamanho esperado das suas bolhas
         if not (min_area < area < max_area):
+            logger.debug(f"Skipping checkbox contour (area out of range): {area:.0f}")
             continue
 
+        # Obter o retângulo delimitador
         x, y, w, h = cv2.boundingRect(contour)
-        if w < 10 or h < 10:
+
+        # Filtrar por tamanho mínimo
+        if w < 5 or h < 5: # Reduzido o mínimo para capturar bolhas menores
+            logger.debug(f"Skipping checkbox contour (min size): w={w}, h={h}")
             continue
 
+        # Filtrar por proporção (aspect ratio) - deve ser próximo de 1 para quadrados/círculos
         aspect_ratio = float(w) / h if h > 0 else 0
-        if aspect_ratio < 0.7 or aspect_ratio > 1.3:
+        if aspect_ratio < 0.5 or aspect_ratio > 1.5: # Faixa mais ampla para tolerar distorções
+            logger.debug(f"Skipping checkbox contour (aspect ratio): {aspect_ratio:.2f}")
             continue
 
         perimeter = cv2.arcLength(contour, True)
         if perimeter < 1:
+            logger.debug("Skipping checkbox contour (perimeter < 1)")
             continue
         circularity = 4 * np.pi * area / (perimeter * perimeter)
-        if circularity < 0.5:
+        if circularity < 0.3: # Faixa mais ampla para tolerar formas não perfeitamente circulares
+            logger.debug(f"Skipping checkbox contour (circularity): {circularity:.3f}")
             continue
 
         hull = cv2.convexHull(contour)
         hull_area = cv2.contourArea(hull)
         if hull_area > 0:
             solidity = area / hull_area
-            if solidity < 0.6:
+            if solidity < 0.4: # Faixa mais ampla para tolerar preenchimentos irregulares
+                logger.debug(f"Skipping checkbox contour (solidity): {solidity:.3f}")
                 continue
 
         checkboxes.append((x, y, w, h))
-        logger.debug(f"Box: x={x}, y={y}, w={w}, h={h}, aspect={aspect_ratio:.2f}, circ={circularity:.3f}, solid={solidity:.3f}, area={area:.0f}")
+        logger.debug(f"Found checkbox: x={x}, y={y}, w={w}, h={h}, aspect={aspect_ratio:.2f}, circ={circularity:.3f}, solid={solidity:.3f}, area={area:.0f}")
 
     logger.info("Total checkboxes found: %d", len(checkboxes))
     return checkboxes
@@ -200,7 +212,8 @@ def _cluster_checkboxes(
             rows.append(sorted(current_row, key=lambda b: b[0]))
 
     # Filtrar linhas: manter apenas linhas com um número razoável de alternativas (ex: 3 a 5)
-    filtered_rows = [row for row in rows if len(row) >= 3 and len(row) <= 6]
+    # Ajustado para permitir 4 alternativas como no seu cartão
+    filtered_rows = [row for row in rows if len(row) >= 3 and len(row) <= 5]
 
     logger.info(f"Clustered into {len(rows)} rows, kept {len(filtered_rows)} valid rows.")
     return filtered_rows
@@ -208,7 +221,7 @@ def _cluster_checkboxes(
 def detect_bubbles(
     image: np.ndarray,
     fill_threshold: int = 120, # Ajustado para ser mais sensível a marcações
-    marked_percentage: float = 0.35, # Ajustado para 35% de preenchimento
+    marked_percentage: float = 0.30, # Ajustado para 30% de preenchimento
 ) -> BubbleResult:
     """
     Detect and classify checkboxes as marked or unmarked, with ROI filtering.
@@ -222,9 +235,10 @@ def detect_bubbles(
 
     # --- ESTRATÉGIA DE FILTRAGEM DE ROI ---
     # Ajuste estes percentuais para focar na área das respostas do seu cartão.
-    roi_x_start_percent = 0.10
-    roi_y_start_percent = 0.20 # Pula o cabeçalho
-    roi_x_end_percent = 0.90
+    # Reduzido o y_start_roi para capturar bolhas que possam estar mais acima
+    roi_x_start_percent = 0.05
+    roi_y_start_percent = 0.15 # Pula o cabeçalho, mas mais baixo para capturar bolhas
+    roi_x_end_percent = 0.95
     roi_y_end_percent = 0.95
 
     y_start_roi = int(height * roi_y_start_percent)
@@ -239,7 +253,8 @@ def detect_bubbles(
         return BubbleResult(found=False, grids=[])
 
     # Detectar checkboxes na ROI
-    checkboxes_in_roi = _find_checkboxes(roi_gray, min_area=100, max_area=1500)
+    # Ajustado min_area e max_area para serem mais flexíveis
+    checkboxes_in_roi = _find_checkboxes(roi_gray, min_area=20, max_area=3000)
     
     if not checkboxes_in_roi:
         logger.warning("No checkboxes detected in ROI")
@@ -318,6 +333,7 @@ def find_corner_markers(image: np.ndarray) -> Optional[List[List[float]]]:
 
     markers = []
     for c in cnts:
+        # Aproxima o contorno para um polígono
         peri = cv2.arcLength(c, True)
         approx = cv2.approxPolyDP(c, 0.04 * peri, True)
 
@@ -327,9 +343,8 @@ def find_corner_markers(image: np.ndarray) -> Optional[List[List[float]]]:
             area = cv2.contourArea(c)
 
             # Filtra por área e proporção para encontrar os marcadores
-            # Ajuste esses valores para o tamanho dos seus marcadores
-            # Os marcadores do seu cartão são relativamente grandes
-            if 0.8 <= aspect_ratio <= 1.2 and 500 < area < 5000: # Ajustado para marcadores maiores
+            # Ajustado para marcadores menores e mais flexíveis
+            if 0.7 <= aspect_ratio <= 1.3 and 50 < area < 10000: # Faixa de área mais ampla
                 # Calcula o centro do marcador
                 M = cv2.moments(c)
                 if M["m00"] != 0:
