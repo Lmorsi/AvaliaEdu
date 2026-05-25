@@ -15,10 +15,10 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"], # Permite qualquer origem
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"], # Permite todos os métodos (GET, POST, etc)
+    allow_headers=["*"], # Permite todos os cabeçalhos
 )
 
 def detect_bubbles_robust(image: np.ndarray) -> Tuple[List[List[Dict[str, Any]]], np.ndarray]:
