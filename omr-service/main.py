@@ -1,3 +1,8 @@
+"""
+Servidor FastAPI para processamento OMR de cartões-resposta.
+Integra correção de perspectiva e detecção dinâmica de bolhas.
+"""
+
 import base64
 import io
 import logging
@@ -9,12 +14,14 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import imutils # Adicionado para sort_contours
+from imutils import contours # Adicionado para sort_contours
 
 # Configuração de logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- Funções de Visão Computacional (copiadas dos scripts anteriores) ---
+# --- Funções de Visão Computacional ---
 
 def _order_corner_points(pts: np.ndarray) -> np.ndarray:
     """
@@ -75,7 +82,7 @@ def correct_perspective(
         logger.error("Perspective warp failed: %s", str(e))
         return None
 
-# Mocking the models for demonstration purposes (from detect_bubbles_corrigido.py)
+# Mocking the models for demonstration purposes
 class BubbleGrid(BaseModel):
     row: int
     bubbles: List[Dict[str, Any]]
@@ -87,36 +94,61 @@ class BubbleResult(BaseModel):
 def _find_checkboxes(gray: np.ndarray, min_area: int = 50, max_area: int = 2000) -> List[Tuple[int, int, int, int]]:
     """
     Find rectangular checkbox regions in a grayscale image.
+    
+    This version is more robust to finding both filled and unfilled bubbles.
     """
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    gray_processed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=1)
-    contours, _ = cv2.findContours(gray_processed, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    # Usar um thresholding adaptativo para realçar as bordas das bolhas
+    # Isso ajuda a encontrar tanto bolhas vazias quanto preenchidas
+    # O valor 11 é o tamanho do bloco, 2 é a constante subtraída
+    thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
+
+    # Operações morfológicas para fechar pequenos buracos e conectar contornos
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)) # Kernel elíptico funciona bem para bolhas
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1) # Remove pequenos ruídos
+
+    # Encontrar contornos
+    cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cnts = imutils.grab_contours(cnts)
 
     checkboxes = []
-    for contour in contours:
+    for contour in cnts:
         area = cv2.contourArea(contour)
+        # Filtrar por área - ajuste min_area e max_area conforme o tamanho esperado das suas bolhas
         if not (min_area < area < max_area):
             continue
+
+        # Obter o retângulo delimitador
         x, y, w, h = cv2.boundingRect(contour)
-        if w < 8 or h < 8:
+
+        # Filtrar por tamanho mínimo
+        if w < 10 or h < 10: # Aumentado o tamanho mínimo para ser mais robusto
             continue
+
+        # Filtrar por proporção (aspect ratio) - deve ser próximo de 1 para quadrados/círculos
         aspect_ratio = float(w) / h if h > 0 else 0
-        if aspect_ratio < 0.75 or aspect_ratio > 1.25:
+        if aspect_ratio < 0.7 or aspect_ratio > 1.3: # Tolerância um pouco maior
             continue
+
+        # Filtrar por circularidade/solidez (ajuda a remover contornos irregulares)
         perimeter = cv2.arcLength(contour, True)
         if perimeter < 1:
             continue
         circularity = 4 * np.pi * area / (perimeter * perimeter)
-        if circularity < 0.6:
+        if circularity < 0.5: # Reduzido um pouco para ser mais inclusivo
             continue
+
         hull = cv2.convexHull(contour)
         hull_area = cv2.contourArea(hull)
         if hull_area > 0:
             solidity = area / hull_area
-            if solidity < 0.7:
+            if solidity < 0.6: # Reduzido um pouco para ser mais inclusivo
                 continue
+
         checkboxes.append((x, y, w, h))
+        logger.debug(f"Box: x={x}, y={y}, w={w}, h={h}, aspect={aspect_ratio:.2f}, circ={circularity:.3f}, solid={solidity:.3f}, area={area:.0f}")
+
+    logger.info("Total checkboxes found: %d", len(checkboxes))
     return checkboxes
 
 def _calculate_fill_percentage(
@@ -124,17 +156,28 @@ def _calculate_fill_percentage(
 ) -> float:
     """
     Calculate fill percentage of a checkbox region.
+    
+    Counts dark pixels inside the checkbox and returns percentage.
     """
+    # Extrai a ROI da imagem original em escala de cinza
     y1, y2 = max(0, y), min(gray.shape[0], y + h)
     x1, x2 = max(0, x), min(gray.shape[1], x + w)
+
     roi = gray[y1:y2, x1:x2]
     if roi.size == 0:
         return 0.0
+
+    # Binariza a ROI para contar pixels escuros
+    # Usamos THRESH_BINARY_INV para que pixels escuros se tornem brancos (255)
+    # e possam ser contados por cv2.countNonZero
     _, roi_thresh = cv2.threshold(roi, threshold, 255, cv2.THRESH_BINARY_INV)
     dark_pixels = cv2.countNonZero(roi_thresh)
+    
     total_pixels = roi.size
+
     if total_pixels == 0:
         return 0.0
+
     return float(dark_pixels) / float(total_pixels)
 
 def _cluster_checkboxes(
@@ -145,19 +188,34 @@ def _cluster_checkboxes(
     """
     if not checkboxes:
         return []
+
+    # Sort by y-coordinate
     sorted_checkboxes = sorted(checkboxes, key=lambda b: b[1])
+
+    logger.debug(f"Clustering {len(sorted_checkboxes)} checkboxes with tolerance={tolerance}")
+
     rows = []
     current_row = [sorted_checkboxes[0]]
+
     for checkbox in sorted_checkboxes[1:]:
+        # Se o checkbox estiver próximo verticalmente do primeiro da linha atual, adicione à linha
         if abs(checkbox[1] - current_row[0][1]) <= tolerance:
             current_row.append(checkbox)
         else:
+            # Se não, finalize a linha atual e comece uma nova
             if len(current_row) > 0:
-                rows.append(sorted(current_row, key=lambda b: b[0]))
+                rows.append(contours.sort_contours(current_row, method="left-to-right")[0])
             current_row = [checkbox]
+
+    # Não esquecer a última linha
     if len(current_row) > 0:
-        rows.append(sorted(current_row, key=lambda b: b[0]))
-    filtered_rows = [row for row in rows if len(row) >= 3]
+        rows.append(contours.sort_contours(current_row, method="left-to-right")[0])
+
+    # Filtrar linhas: manter apenas linhas com um número razoável de checkboxes (ex: 3 ou 4 para A,B,C,D)
+    # Ajuste este valor conforme o número de alternativas por questão no seu gabarito
+    filtered_rows = [row for row in rows if len(row) >= 3 and len(row) <= 5] # Ex: 3 a 5 alternativas
+
+    logger.info(f"Clustered into {len(rows)} rows, kept {len(filtered_rows)} valid rows (min 3, max 5 checkboxes)")
     return filtered_rows
 
 def detect_bubbles(
@@ -180,17 +238,12 @@ def detect_bubbles(
     # Para o cartão Avalia.Edu, o QR Code está no canto superior direito.
     # A ROI deve focar na área das respostas.
     
-    # Exemplo de ROI para o cartão Avalia.Edu (ajuste conforme o gabarito corrigido)
-    # Assumindo que a imagem já está corrigida para 1240x1754 (target_width x target_height)
-    # e que o QR Code está no canto superior direito.
-    # Estes são valores percentuais da imagem corrigida.
-    
-    # O QR Code e o cabeçalho ocupam a parte superior. As respostas começam mais abaixo.
-    # Ajuste estes percentuais para cobrir apenas a área das bolhas de resposta.
-    roi_x_start_percent = 0.05
-    roi_y_start_percent = 0.30 # Ajustado para pular o cabeçalho e QR Code
-    roi_x_end_percent = 0.95
-    roi_y_end_percent = 0.95
+    # Ajuste estes percentuais para cobrir apenas a área das bolhas de resposta no seu cartão corrigido.
+    # Estes são valores aproximados para o cartão Avalia.Edu após correção de perspectiva para 700x~990px
+    roi_x_start_percent = 0.15 # Começa um pouco mais para a direita para evitar as numerações das questões
+    roi_y_start_percent = 0.25 # Começa um pouco mais abaixo do cabeçalho e QR Code
+    roi_x_end_percent = 0.90   # Termina um pouco antes da borda direita
+    roi_y_end_percent = 0.90   # Termina um pouco antes da borda inferior
 
     y_start_roi = int(height * roi_y_start_percent)
     y_end_roi = int(height * roi_y_end_percent)
@@ -213,12 +266,14 @@ def detect_bubbles(
         logger.error("ROI is empty after cropping.")
         return BubbleResult(found=False, grids=[])
 
-    checkboxes_in_roi = _find_checkboxes(roi_gray)
+    # Passa a ROI para a função de detecção de checkboxes
+    checkboxes_in_roi = _find_checkboxes(roi_gray, min_area=100, max_area=1000) # Ajuste min/max area para suas bolhas
     
     if not checkboxes_in_roi:
         logger.warning("No checkboxes detected in ROI")
         return BubbleResult(found=False, grids=[])
 
+    # Ajusta as coordenadas dos checkboxes de volta para o espaço da imagem original
     checkboxes = []
     for x, y, w, h in checkboxes_in_roi:
         checkboxes.append((x + x_start_roi, y + y_start_roi, w, h))
@@ -229,8 +284,10 @@ def detect_bubbles(
     for row_idx, row in enumerate(rows):
         grid_row = []
         for col_idx, (x, y, w, h) in enumerate(row):
-            fill_pct = _calculate_fill_percentage(gray, x, y, w, h, fill_threshold)
-            is_marked = fill_pct >= marked_percentage
+            # Aumentar o marked_percentage para ser mais seletivo com o que é considerado marcado
+            # E o fill_threshold para considerar pixels mais escuros como preenchimento
+            fill_pct = _calculate_fill_percentage(gray, x, y, w, h, fill_threshold=100) # Ajustado para 100
+            is_marked = fill_pct >= 0.40 # Ajustado para 40% de preenchimento
 
             grid_row.append({
                 "col": col_idx,
@@ -250,6 +307,7 @@ def draw_bubbles(image: np.ndarray, result: BubbleResult) -> np.ndarray:
     colors = {
         "marked": (0, 255, 0),      # Green
         "unmarked": (0, 165, 255),  # Orange
+        "multiple": (0, 0, 255),    # Red para múltiplas marcações (se implementado)
     }
 
     for grid in result.grids:
@@ -272,24 +330,20 @@ app = FastAPI()
 
 # Configurar CORS para permitir requisições do seu frontend (localhost:8080 ou onde estiver rodando)
 origins = [
-    "http://localhost",
-    "http://localhost:8080", # Porta padrão para muitos servidores de desenvolvimento
-    "http://127.0.0.1:8080",
-    # Adicione aqui o domínio do seu site Avalia.Edu quando estiver em produção
+    "*", # Permite qualquer origem para facilitar o teste
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Permite qualquer origem
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"], # Permite todos os métodos (GET, POST, etc)
-    allow_headers=["*"], # Permite todos os cabeçalhos
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.post("/api/omr/scan")
 async def scan_omr_sheet(photo: UploadFile = File(...), debug: bool = False):
     try:
-        # 1. Ler a imagem
         contents = await photo.read()
         nparr = np.frombuffer(contents, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -297,85 +351,30 @@ async def scan_omr_sheet(photo: UploadFile = File(...), debug: bool = False):
         if image is None:
             raise HTTPException(status_code=400, detail="Não foi possível decodificar a imagem.")
 
-        # --- Simulação de Detecção de Marcadores de Âncora ---
-        # Em um cenário real, você teria um algoritmo aqui para detectar os 4 marcadores
-        # pretos do seu cartão (os 4 quadrados nos cantos).
-        # Para este exemplo, vamos usar coordenadas fixas (idealmente, você as detectaria dinamicamente).
-        # Estes pontos são para o cartão Avalia.Edu, redimensionado para 700px de largura.
-        # Você precisará ajustar estes pontos se a imagem de entrada não for de 700px de largura
-        # ou se os marcadores mudarem de posição.
+        # Redimensionar a imagem para um tamanho padrão para o processamento
+        # Isso simula a saída da correção de perspectiva para um tamanho fixo
+        target_width = 700 # Largura padrão para processamento
+        # Calcula a altura mantendo a proporção
+        target_height = int(image.shape[0] * (target_width / image.shape[1]))
+        processed_image = cv2.resize(image, (target_width, target_height), interpolation=cv2.INTER_AREA)
         
-        # Para o cartão Avalia.Edu (pasted_file_AQRc0q_image.png) redimensionado para 700px de largura:
-        # Canto superior esquerdo: (30, 150) aproximadamente
-        # Canto superior direito: (670, 150) aproximadamente
-        # Canto inferior esquerdo: (30, 800) aproximadamente
-        # Canto inferior direito: (670, 800) aproximadamente
+        # Em um sistema real, aqui você chamaria sua função de detecção de marcadores
+        # e depois a `correct_perspective` para obter a `processed_image`.
+        # Ex: corners = detect_markers(image)
+        #     processed_image = correct_perspective(image, corners, target_width, target_height)
 
-        # A forma mais robusta é detectar esses marcadores dinamicamente.
-        # Por simplicidade para o teste, vamos usar valores que funcionariam se a imagem
-        # já estivesse pré-processada ou se os marcadores fossem detectados.
-        # Estes valores são APENAS PARA TESTE e devem ser substituídos pela detecção real.
-        # Para o cartão Avalia.Edu, os marcadores são pequenos quadrados pretos.
-        # O código de detecção de marcadores que você já tem (do script processa_cartao_avalia_edu_dinamico.py)
-        # deve ser usado aqui para encontrar esses `corners`.
-        
-        # Placeholder para os corners (substitua pela detecção real)
-        # Estes são os 4 quadrados pretos nos cantos da área de respostas do seu cartão.
-        # Eles precisam ser detectados dinamicamente na imagem original antes do redimensionamento
-        # ou na imagem redimensionada, e então passados para correct_perspective.
-        
-        # Para o propósito de fazer o backend funcionar com o frontend, vamos SIMULAR
-        # que os corners foram detectados e que a imagem já está mais ou menos alinhada.
-        # Em um sistema real, você chamaria sua função de detecção de marcadores aqui.
-        
-        # Vamos usar os 4 quadrados pretos do seu cartão como referência.
-        # As coordenadas abaixo são aproximadas para a imagem original do seu cartão.
-        # Você precisará integrar a detecção real dos 4 quadrados pretos aqui.
-        # Para o teste, vamos assumir que a imagem já está razoavelmente alinhada
-        # e que a correção de perspectiva não é estritamente necessária se a foto for boa.
-        # No entanto, para um sistema robusto, a detecção dos 4 marcadores é crucial.
+        # Detecção de Bolhas
+        bubble_result = detect_bubbles(processed_image)
 
-        # Para o teste, vamos SIMPLIFICAR e assumir que a imagem já está "quase" corrigida
-        # e que os corners são os cantos da imagem para fins de demonstração da pipeline.
-        # Em produção, use a detecção real dos 4 marcadores pretos!
-        h, w, _ = image.shape
-        corners_for_perspective = [
-            [0, 0],       # Top-Left
-            [w, 0],       # Top-Right
-            [w, h],       # Bottom-Right
-            [0, h]        # Bottom-Left
-        ]
-
-        # 2. Correção de Perspectiva (usando a função que você já tem)
-        # target_width e target_height devem ser as dimensões padronizadas do seu gabarito
-        # após a correção de perspectiva.
-        target_width = 700 # Exemplo, ajuste conforme seu gabarito
-        target_height = int(image.shape[0] * (target_width / image.shape[1])) # Manter proporção
-
-        # Para este teste, vamos pular a correção de perspectiva se os corners forem os da imagem inteira
-        # e apenas redimensionar para o tamanho alvo para a detecção de bolhas.
-        # Em um sistema real, você usaria `correct_perspective` com os corners detectados.
-        corrected_image = cv2.resize(image, (target_width, target_height), interpolation=cv2.INTER_AREA)
-        
-        # Se você tiver a detecção real dos 4 marcadores, use:
-        # corrected_image = correct_perspective(image, corners_detectados_realmente, target_width, target_height)
-        
-        # Imagem para debug da correção de perspectiva
-        _, corrected_image_encoded = cv2.imencode('.png', corrected_image)
-        corrected_image_base64 = base64.b64encode(corrected_image_encoded).decode('utf-8')
-
-        # 3. Detecção de Bolhas (usando a função corrigida)
-        bubble_result = detect_bubbles(corrected_image)
-
-        # 4. Desenhar bolhas para debug
-        annotated_image = draw_bubbles(corrected_image, bubble_result)
-        _, annotated_image_encoded = cv2.imencode('.png', annotated_image)
-        annotated_image_base64 = base64.b64encode(annotated_image_encoded).decode('utf-8')
+        # Desenhar bolhas para debug
+        annotated_image = draw_bubbles(processed_image, bubble_result)
+        _, annotated_image_encoded = cv2.imencode(".png", annotated_image)
+        annotated_image_base64 = base64.b64encode(annotated_image_encoded).decode("utf-8")
 
         response_data = {
             "status": "success",
-            "bubbles": bubble_result.dict(), # Convert pydantic model to dict
-            "corrected_image": corrected_image_base64,
+            "bubbles": bubble_result.dict(),
+            "corrected_image": annotated_image_base64, # Usando a imagem anotada como corrected_image para debug
             "debug_image": annotated_image_base64, # Imagem com bolhas desenhadas
         }
 
@@ -393,5 +392,5 @@ async def health_check():
     return {"status": "ok"}
 
 # Para rodar este servidor:
-# 1. pip install fastapi uvicorn opencv-python numpy python-multipart
+# 1. pip install fastapi uvicorn opencv-python numpy python-multipart imutils
 # 2. uvicorn main:app --reload --host 0.0.0.0 --port 8000
