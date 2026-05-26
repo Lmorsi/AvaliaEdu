@@ -166,7 +166,7 @@ const generateAnswerSheet = async (finalData) => {
         questionHTML += `
           <div style="display: flex; flex-direction: column; align-items: center; gap: 0.3mm; flex-shrink: 0;">
             <span style="font-size: 7px; font-weight: bold; color: #333; height: 2mm; line-height: 2mm;">${letter}</span>
-            <div class="bubble" style="width: 17px; height: 17px; border: 1.3px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
+            <div class="bubble" style="width: 18px; height: 18px; border: 2px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
           </div>
         `;
       });
@@ -191,11 +191,11 @@ const generateAnswerSheet = async (finalData) => {
             <span style="font-size: 7px; font-weight: bold; min-width: 3mm;">${afirmIndex + 1}:</span>
             <div style="display: flex; flex-direction: column; align-items: center; gap: 0.3mm;">
               <span style="font-size: 6px; font-weight: bold; color: #333; height: 1.5mm;">V</span>
-              <div class="bubble" style="width: 18px; height: 18px; border: 1.3px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
+              <div class="bubble" style="width: 18px; height: 18px; border: 2px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
             </div>
             <div style="display: flex; flex-direction: column; align-items: center; gap: 0.3mm;">
               <span style="font-size: 6px; font-weight: bold; color: #333; height: 1.5mm;">F</span>
-              <div class="bubble" style="width: 18px; height: 18px; border: 1.3px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
+              <div class="bubble" style="width: 18px; height: 18px; border: 2px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
             </div>
           </div>
         `;
@@ -212,7 +212,7 @@ const generateAnswerSheet = async (finalData) => {
   // Add padding-bottom to keep content away from bottom L-markers (2mm + 10mm marker + 4mm clearance = 16mm)
   for (let col = 0; col < totalColumns; col++) {
     // Add margin-top to first column for better spacing below L-markers
-    const marginTop = col === 0 ? 'margin-top: 3mm;' : '';
+    const marginTop = col === 0 ? 'margin-top: 6mm;' : '';
     answerSheetHTML += `<div style="flex: 1; display: flex; flex-direction: column; padding-bottom: 16mm; ${marginTop}">`;
 
     for (let row = 0; row < maxQuestoesPerColumn; row++) {

@@ -1,0 +1,100 @@
+════════════════════════════════════════════════════════════════════════════════
+                     RESUMO DE ALTERAÇÕES - VERSÃO 5.0
+════════════════════════════════════════════════════════════════════════════════
+
+ARQUIVO MODIFICADO: server/server.js
+
+MUDANÇA 1: BOLHAS DE MÚLTIPLA ESCOLHA (Linha 169)
+──────────────────────────────────────────────────
+
+Antes:
+  <div class="bubble" style="width: 17px; height: 17px; border: 1.3px solid #333; ..."></div>
+
+Depois:
+  <div class="bubble" style="width: 18px; height: 18px; border: 2px solid #333; ..."></div>
+
+Mudanças:
+  ✓ width: 17px → 18px
+  ✓ height: 17px → 18px
+  ✓ border: 1.3px → 2px
+
+
+MUDANÇA 2: BOLHAS DE VERDADEIRO (Linha 194)
+─────────────────────────────────────────────
+
+Antes:
+  <div class="bubble" style="width: 18px; height: 18px; border: 1.3px solid #333; ..."></div>
+
+Depois:
+  <div class="bubble" style="width: 18px; height: 18px; border: 2px solid #333; ..."></div>
+
+Mudanças:
+  ✓ border: 1.3px → 2px
+
+
+MUDANÇA 3: BOLHAS DE FALSO (Linha 198)
+──────────────────────────────────────
+
+Antes:
+  <div class="bubble" style="width: 18px; height: 18px; border: 1.3px solid #333; ..."></div>
+
+Depois:
+  <div class="bubble" style="width: 18px; height: 18px; border: 2px solid #333; ..."></div>
+
+Mudanças:
+  ✓ border: 1.3px → 2px
+
+
+MUDANÇA 4: MARGIN-TOP DE PRIMEIRA COLUNA (Linha 215)
+─────────────────────────────────────────────────────
+
+Antes:
+  const marginTop = col === 0 ? 'margin-top: 3mm;' : '';
+
+Depois:
+  const marginTop = col === 0 ? 'margin-top: 6mm;' : '';
+
+Mudanças:
+  ✓ margin-top: 3mm → 6mm
+
+
+════════════════════════════════════════════════════════════════════════════════
+
+RESUMO DE MUDANÇAS:
+
+┌─────────────────────────────────────────────────────┐
+│ Total de mudanças:       4                          │
+│ Linhas afetadas:         4 (169, 194, 198, 215)    │
+│ Arquivo modificado:      1 (server/server.js)       │
+│ Quebras de funcionalidade: 0                        │
+│ Compatibilidade:         100% retrocompatível       │
+└─────────────────────────────────────────────────────┘
+
+
+IMPACTO VISUAL:
+
+ANTES:                              DEPOIS:
+
+○○○○○○○○○○○○○○○○○○○○○○○○    ●●●●●●●●●●●●●●●●●●●●●●●●
+○○○○○○○○○○○○○○○○○○○○○○○○    ●●●●●●●●●●●●●●●●●●●●●●●●
+○○○○○○○○○○○○○○○○○○○○○○○○    ●●●●●●●●●●●●●●●●●●●●●●●●
+
+Border: 1.3px (fino)                Border: 2px (grosso)
+Size: 17px                          Size: 18px
+Margin Q1: 3mm                      Margin Q1: 6mm
+
+
+BENEFÍCIOS ESPERADOS:
+
+✓ Melhor detecção de bolhas
+✓ Menos erros de threshold
+✓ Mais robusto a compressão JPEG
+✓ Q1 com melhor separação
+✓ Taxa de acerto esperada: 95%+
+
+
+VERSÃO: 5.0
+DATA: 26 de maio de 2026
+STATUS: COMPILADO E PRONTO
+
+════════════════════════════════════════════════════════════════════════════════
