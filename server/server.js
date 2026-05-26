@@ -118,9 +118,10 @@ const generateAnswerSheet = async (finalData) => {
       </div>
 
       <!-- 4 L-shaped fiducial markers: positioned to bracket the response grid -->
-      <!-- Top markers align with start of questions, bottom markers at end -->
-      <img src="data:image/svg+xml;base64,${L_LT_B64}" style="position: absolute; top: 8mm; left: 1mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
-      <img src="data:image/svg+xml;base64,${L_RT_B64}" style="position: absolute; top: 8mm; right: 1mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
+      <!-- Top markers positioned BELOW QR code, right at the start of response area -->
+      <!-- Bottom markers at the end of response area -->
+      <img src="data:image/svg+xml;base64,${L_LT_B64}" style="position: absolute; top: 38mm; left: 1mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
+      <img src="data:image/svg+xml;base64,${L_RT_B64}" style="position: absolute; top: 38mm; right: 1mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
       <img src="data:image/svg+xml;base64,${L_LB_B64}" style="position: absolute; bottom: 2mm; left: 1mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
       <img src="data:image/svg+xml;base64,${L_RB_B64}" style="position: absolute; bottom: 2mm; right: 1mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
 
