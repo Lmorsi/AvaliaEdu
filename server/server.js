@@ -107,7 +107,7 @@ const generateAnswerSheet = async (finalData) => {
 
   // 3. CONSTRUIR O HTML DO GABARITO - 4 COLUNAS COM MÁXIMO 15 QUESTÕES CADA
   let answerSheetHTML = `
-    <div style="position: relative; padding: 12mm 8mm 10mm 8mm; margin-top: 5mm; page-break-inside: avoid;">
+    <div style="position: relative; padding: 12mm 24mm 10mm 24mm; margin-top: 5mm; page-break-inside: avoid;">
       <!-- Cabeçalho do Gabarito com QR Code -->
       <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #ccc; padding-bottom: 3mm; margin-bottom: 3mm;">
           <div>
@@ -126,6 +126,7 @@ const generateAnswerSheet = async (finalData) => {
       <img src="data:image/svg+xml;base64,${L_RB_B64}" style="position: absolute; bottom: 2mm; right: 12mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
 
       <!-- Grade de Respostas (4 colunas, máximo 15 questões por coluna, vertical com opções horizontais) -->
+      <!-- Increased padding (24mm = 12mm marker + 12mm gap) to keep bubbles within L-marker boundaries -->
       <div style="display: flex; gap: 4mm; justify-content: space-between;">
   `;
 
@@ -207,8 +208,9 @@ const generateAnswerSheet = async (finalData) => {
 
   // Criar colunas explicitamente para garantir distribuição vertical
   // Coluna 1: 1-15, Coluna 2: 16-30, Coluna 3: 31-45, Coluna 4: 46-60
+  // Add padding-bottom to keep content away from bottom L-markers (2mm + 10mm marker + 4mm clearance = 16mm)
   for (let col = 0; col < totalColumns; col++) {
-    answerSheetHTML += `<div style="flex: 1; display: flex; flex-direction: column;">`;
+    answerSheetHTML += `<div style="flex: 1; display: flex; flex-direction: column; padding-bottom: 16mm;">`;
 
     for (let row = 0; row < maxQuestoesPerColumn; row++) {
       const idx = (col * maxQuestoesPerColumn) + row;
