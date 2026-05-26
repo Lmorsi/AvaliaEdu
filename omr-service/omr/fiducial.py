@@ -179,46 +179,40 @@ def _detect_l_markers(image: np.ndarray) -> list[dict]:
 def _extract_l_corner(contour: np.ndarray, bbox_x: int, bbox_y: int, bbox_w: int, bbox_h: int) -> tuple[int, int]:
     """
     Extract the internal corner point of an L-shape (where the two bars meet).
-    Uses the convexity defect (the single large indent) to locate the corner.
-    Fallback: use approximate corner based on contour extremes.
+    Robust to perspective distortion by using the deepest convexity defect.
     """
     contour_closed = contour.reshape(-1, 1, 2).astype(np.int32)
-    hull_indices = cv2.convexHull(contour_closed, returnPoints=False)
+    hull = cv2.convexHull(contour_closed, returnPoints=False)
 
-    if hull_indices is not None and len(hull_indices) >= 3:
-        try:
-            defects = cv2.convexityDefects(contour_closed, hull_indices)
-            if defects is not None and len(defects) > 0:
-                # Find the deepest (most significant) defect
-                max_defect_idx = 0
-                max_depth = 0
-                for i, defect in enumerate(defects):
-                    depth = defect[0][3] / 256.0
-                    if depth > max_depth:
-                        max_depth = depth
-                        max_defect_idx = i
+    if hull is None or len(hull) < 3:
+        return int(bbox_x + bbox_w // 2), int(bbox_y + bbox_h // 2)
 
-                # The farthest point in the deepest defect is the L corner
-                defect = defects[max_defect_idx][0]
-                farthest_idx = defect[2]
-                corner_pt = contour[farthest_idx][0]
-                return int(corner_pt[0]), int(corner_pt[1])
-        except (cv2.error, IndexError):
-            pass
+    try:
+        defects = cv2.convexityDefects(contour_closed, hull)
+        if defects is None or len(defects) == 0:
+            return int(bbox_x + bbox_w // 2), int(bbox_y + bbox_h // 2)
 
-    # Fallback: use extremes of the contour to estimate corner
-    # For an L in one of the 4 orientations, pick the inner corner
-    x_min = contour[:, 0, 0].min()
-    x_max = contour[:, 0, 0].max()
-    y_min = contour[:, 0, 1].min()
-    y_max = contour[:, 0, 1].max()
+        # Find the deepest (most significant) defect — this is the L corner
+        best_defect = None
+        max_depth = 0
+        for defect in defects:
+            depth = defect[0][3] / 256.0  # Fixed-point: depth >> 8
+            if depth > max_depth:
+                max_depth = depth
+                best_defect = defect[0]
 
-    # Estimate corner based on bounding box position relative to image
-    # This is a heuristic based on which L orientation we expect
-    corner_x = (x_min + x_max) // 2
-    corner_y = (y_min + y_max) // 2
+        if best_defect is not None:
+            # Use the farthest point (between start and end of defect)
+            # This is the actual corner of the L
+            farthest_idx = best_defect[2]
+            corner_pt = contour[farthest_idx][0]
+            return int(corner_pt[0]), int(corner_pt[1])
 
-    return corner_x, corner_y
+    except (cv2.error, IndexError, TypeError):
+        pass
+
+    # Fallback: geometric center (less precise but always works)
+    return int(bbox_x + bbox_w // 2), int(bbox_y + bbox_h // 2)
 
 
 def _classify_l_markers(
@@ -227,46 +221,114 @@ def _classify_l_markers(
     img_height: int,
 ) -> list[tuple[int, int]]:
     """
-    Classify detected L-markers into 4 expected positions using their internal corners.
+    Classify 4+ detected L-markers into expected corner positions.
+    Robust to severe perspective distortion by finding the best quadrilateral match.
 
     Returns ordered list: [top_left, top_right, bottom_right, bottom_left]
-    (the 4 corner points for perspective correction)
     """
     if len(markers) == 0:
         return [(0, 0), (img_width, 0), (img_width, img_height), (0, img_height)]
 
-    mid_x = img_width / 2
-    mid_y = img_height / 2
+    if len(markers) == 4:
+        # Exactly 4 markers: order them by position
+        pts = [(m["corner_x"], m["corner_y"]) for m in markers]
+        return _order_markers_by_position(pts, img_width, img_height)
 
-    # Split into left/right and top/bottom quadrants using corner points
-    left = [m for m in markers if m["corner_x"] < mid_x]
-    right = [m for m in markers if m["corner_x"] >= mid_x]
+    if len(markers) > 4:
+        # More than 4: select the 4 that form the best rectangle
+        logger.info("Found %d markers, selecting best 4", len(markers))
+        best_4 = _select_best_4_markers(markers)
+        pts = [(m["corner_x"], m["corner_y"]) for m in best_4]
+        return _order_markers_by_position(pts, img_width, img_height)
 
-    left.sort(key=lambda m: m["corner_y"])
-    right.sort(key=lambda m: m["corner_y"])
+    # Less than 4: use what we have with fallbacks
+    logger.warning("Expected 4 markers, found %d", len(markers))
+    pts = [(m["corner_x"], m["corner_y"]) for m in markers]
+    return _order_markers_by_position(pts, img_width, img_height)
 
-    logger.info("L-marker classification: left=%d, right=%d", len(left), len(right))
 
-    # Fallback if distribution is uneven
-    if len(left) < 2 or len(right) < 2:
-        sorted_by_x = sorted(markers, key=lambda m: m["corner_x"])
-        left = sorted_by_x[:2]
-        right = sorted_by_x[2:]
-        left.sort(key=lambda m: m["corner_y"])
-        right.sort(key=lambda m: m["corner_y"])
-        logger.info("L-marker re-split: left=%d, right=%d", len(left), len(right))
+def _select_best_4_markers(markers: list[dict]) -> list[dict]:
+    """
+    Select the best 4 markers from a larger set using a convex hull approximation.
+    """
+    if len(markers) <= 4:
+        return markers
 
-    # Extract corner points
-    left_top = (left[0]["corner_x"], left[0]["corner_y"]) if len(left) > 0 else (0, 0)
-    left_bottom = (left[-1]["corner_x"], left[-1]["corner_y"]) if len(left) > 1 else (0, img_height)
-    right_top = (right[0]["corner_x"], right[0]["corner_y"]) if len(right) > 0 else (img_width, 0)
-    right_bottom = (right[-1]["corner_x"], right[-1]["corner_y"]) if len(right) > 1 else (img_width, img_height)
+    # Use OpenCV to find the convex hull
+    pts = np.array([[m["corner_x"], m["corner_y"]] for m in markers], dtype=np.int32)
+    hull = cv2.convexHull(pts)
+    hull_indices_list = []
 
-    logger.info("L-marker corners: TL=%s, TR=%s, BR=%s, BL=%s",
-                left_top, right_top, right_bottom, left_bottom)
+    # Map hull points back to original marker indices
+    for hull_pt in hull:
+        hull_pt_coords = tuple(hull_pt[0])
+        for i, m in enumerate(markers):
+            if (m["corner_x"], m["corner_y"]) == hull_pt_coords:
+                hull_indices_list.append(i)
+                break
 
-    # TL, TR, BR, BL order
-    return [left_top, right_top, right_bottom, left_bottom]
+    if len(hull_indices_list) <= 4:
+        return [markers[i] for i in hull_indices_list]
+
+    # If hull has more than 4 points, pick 4 most distant from centroid
+    cx = np.mean([m["corner_x"] for m in markers])
+    cy = np.mean([m["corner_y"] for m in markers])
+    distances = [(m, (m["corner_x"] - cx)**2 + (m["corner_y"] - cy)**2) for m in markers]
+    distances.sort(key=lambda x: x[1], reverse=True)
+    return [m for m, _ in distances[:4]]
+
+
+def _order_markers_by_position(
+    points: list[tuple[int, int]],
+    img_width: int,
+    img_height: int,
+) -> list[tuple[int, int]]:
+    """
+    Order points as [top_left, top_right, bottom_right, bottom_left].
+    """
+    if len(points) < 4:
+        # Pad with image corners if not enough markers
+        corners = {
+            "TL": (0, 0),
+            "TR": (img_width, 0),
+            "BR": (img_width, img_height),
+            "BL": (0, img_height),
+        }
+        for p in points:
+            closest_key = min(
+                corners.keys(),
+                key=lambda k: (corners[k][0] - p[0])**2 + (corners[k][1] - p[1])**2
+            )
+            corners[closest_key] = p
+        return [corners["TL"], corners["TR"], corners["BR"], corners["BL"]]
+
+    # Find which point is closest to each corner
+    pts_array = np.array(points, dtype=np.float32)
+    expected_corners = [
+        (0, 0),  # TL
+        (img_width, 0),  # TR
+        (img_width, img_height),  # BR
+        (0, img_height),  # BL
+    ]
+
+    ordered = []
+    used = set()
+    for ex_corner in expected_corners:
+        best_idx = 0
+        best_dist = float('inf')
+        for i, pt in enumerate(pts_array):
+            if i in used:
+                continue
+            dist = (pt[0] - ex_corner[0])**2 + (pt[1] - ex_corner[1])**2
+            if dist < best_dist:
+                best_dist = dist
+                best_idx = i
+        used.add(best_idx)
+        ordered.append(tuple(points[best_idx]))
+
+    logger.info("L-marker corners (ordered): TL=%s, TR=%s, BR=%s, BL=%s",
+                ordered[0], ordered[1], ordered[2], ordered[3])
+    return ordered
 
 
 def detect_fiducials(image: np.ndarray) -> FiducialResult:
