@@ -1,17 +1,34 @@
 # Reposicionamento dos Marcadores L - Sumário Executivo
 
-## Mudança Implementada
+## Mudanças Implementadas (Versão Final)
 
-Todos os marcadores L (fiduciais) foram reposicionados de **8mm para 38mm do topo**, movendo-os **para baixo do QR code**.
+### 1. Posicionamento Vertical
+- **Antes:** `top: 8mm` (dentro do header com QR)
+- **Agora:** `top: 55mm` (bem abaixo do QR code)
+- **Benefício:** QR code fica completamente separado da zona de transformação
+
+### 2. Posicionamento Horizontal
+- **Antes:** `left/right: 1mm` (muito próximo das bordas)
+- **Agora:** `left/right: 12mm` (afastado das bordas e do QR)
+- **Benefício:** Marcadores superiores esquerdo/direito não ficam junto ao QR
 
 ### Localização no Código
 **Arquivo:** `server/server.js`  
-**Linhas:** 122-123
+**Linhas:** 123-126
 
-### Mudança Específica
+### Mudanças Específicas
 ```diff
-- <img ... style="position: absolute; top: 8mm; ...
-+ <img ... style="position: absolute; top: 38mm; ...
+- top: 8mm; left: 1mm;
++ top: 55mm; left: 12mm;
+
+- top: 8mm; right: 1mm;
++ top: 55mm; right: 12mm;
+
+- bottom: 2mm; left: 1mm;
++ bottom: 2mm; left: 12mm;
+
+- bottom: 2mm; right: 1mm;
++ bottom: 2mm; right: 12mm;
 ```
 
 ## Por Que Funciona Melhor

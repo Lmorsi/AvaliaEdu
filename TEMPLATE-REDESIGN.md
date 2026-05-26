@@ -7,32 +7,37 @@ A imagem de debug mostrava que:
 2. Isso causava distorção severa na perspectiva durante a leitura
 3. As bolhas de resposta ficavam muito distorcidas após correção
 
-## Solução Implementada
+## Solução Implementada (Versão Final)
 
-### Mudança no `server.js` (linha 122-123)
+### Mudanças no `server.js` (linhas 123-126)
+
 **Antes:**
 ```javascript
-top: 8mm;   // Dentro do header, junto ao QR code
+top: 8mm; left: 1mm;      // Dentro do header, junto ao QR code
 ```
 
 **Depois:**
 ```javascript
-top: 38mm;  // 30mm abaixo do header, logo acima das bolhas
+top: 55mm; left: 12mm;    // 47mm abaixo do header, afastado das bordas
 ```
 
 ### Novo Layout:
 ```
-┌─────────────────────────────────────┐
-│  FOLHA DE RESPOSTAS        [QR CODE] │  ← Header (8mm)
-├─────────────────────────────────────┤
-│                                     │
-│  [L-MARKER]  <--- 38mm do topo     │  ← Marcadores agora aqui
-│                                     │
-│  1  ○○○○    (bolhas)               │
-│  2  ○○○○                           │
-│  ...                                │
-│  [L-MARKER]                         │  ← Bottom marker
-└─────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│  FOLHA DE RESPOSTAS            [QR CODE]     │  ← Header (~35mm)
+├──────────────────────────────────────────────┤
+│                                              │
+│ 20mm (espaço livre)                          │
+│                                              │
+│  [L]                        [L]              │  ← top: 55mm
+│  12mm afastado                12mm afastado  │
+│                                              │
+│  1  ○ ○ ○ ○     (bolhas)                    │
+│  2  ○ ○ ○ ○                                 │
+│  ...                                         │
+│  [L]                        [L]              │  ← bottom: 2mm
+│  12mm afastado                12mm afastado  │
+└──────────────────────────────────────────────┘
 ```
 
 ## Impactos Positivos
@@ -57,9 +62,10 @@ top: 38mm;  // 30mm abaixo do header, logo acima das bolhas
 ## Dados Técnicos
 
 - **Header height**: ~35mm (título + QR code + espaço)
-- **Novo top dos marcadores**: 38mm (5mm após header)
-- **Área de contenção**: 38mm a bottom (últimas bolhas ~250mm)
-- **Marcadores inferiores**: mantidos em `bottom: 2mm`
+- **Top dos marcadores superiores**: 55mm (20mm após header)
+- **Left/Right offset**: 12mm (afasta de bordas e QR code)
+- **Área de contenção**: 55mm a bottom (últimas bolhas ~250mm)
+- **Marcadores inferiores**: `bottom: 2mm` com `left/right: 12mm`
 
 ## Testes Recomendados
 
