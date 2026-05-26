@@ -131,9 +131,10 @@ const generateAnswerSheet = async (finalData) => {
   `;
 
   // 4. GERAR AS BOLHAS DE RESPOSTA
-  // Distribuir questões em colunas: preencher coluna 1 (1-15), depois coluna 2 (16-30), coluna 3 (31-45), coluna 4 (46-60)
-  const maxQuestoesPerColumn = 15;
-  const totalColumns = 4;
+  // Distribuir questões em 3 colunas: coluna 1 (1-20), coluna 2 (21-40), coluna 3 (41-60)
+  // Use 3 columns for better space utilization
+  const maxQuestoesPerColumn = 20;
+  const totalColumns = 3;
 
   // Função para gerar o HTML de uma questão individual
   const generateQuestionBubbles = (item, questionNumber) => {
@@ -155,17 +156,17 @@ const generateAnswerSheet = async (finalData) => {
       const validAlternatives = item.alternativas.filter(alt => alt && alt.trim() !== '');
 
       questionHTML += `
-        <div style="display: flex; align-items: flex-start; margin: 1.5mm 0; break-inside: avoid;">
+        <div style="display: flex; align-items: flex-start; margin: 1.5mm 0 1.5mm 0; break-inside: avoid; margin-top: 0.5mm;">
           <span style="font-weight: bold; margin-right: 2mm; min-width: 6mm; font-size: 9px;">${questionNumber}</span>
-          <div style="display: flex; gap: 2mm; flex-wrap: wrap; align-items: flex-start;">
+          <div style="display: flex; gap: 1.2mm; flex-wrap: nowrap; align-items: flex-start; max-width: 90mm;">
       `;
 
       validAlternatives.forEach((_, altIndex) => {
         const letter = String.fromCharCode(65 + altIndex);
         questionHTML += `
-          <div style="display: flex; flex-direction: column; align-items: center; gap: 0.5mm;">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 0.3mm; flex-shrink: 0;">
             <span style="font-size: 7px; font-weight: bold; color: #333; height: 2mm; line-height: 2mm;">${letter}</span>
-            <div class="bubble" style="width: 18px; height: 18px; border: 1.3px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
+            <div class="bubble" style="width: 17px; height: 17px; border: 1.3px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
           </div>
         `;
       });
@@ -207,10 +208,12 @@ const generateAnswerSheet = async (finalData) => {
   };
 
   // Criar colunas explicitamente para garantir distribuição vertical
-  // Coluna 1: 1-15, Coluna 2: 16-30, Coluna 3: 31-45, Coluna 4: 46-60
+  // Coluna 1: 1-20, Coluna 2: 21-40, Coluna 3: 41-60 (3 columns for better space usage)
   // Add padding-bottom to keep content away from bottom L-markers (2mm + 10mm marker + 4mm clearance = 16mm)
   for (let col = 0; col < totalColumns; col++) {
-    answerSheetHTML += `<div style="flex: 1; display: flex; flex-direction: column; padding-bottom: 16mm;">`;
+    // Add margin-top to first column for better spacing below L-markers
+    const marginTop = col === 0 ? 'margin-top: 3mm;' : '';
+    answerSheetHTML += `<div style="flex: 1; display: flex; flex-direction: column; padding-bottom: 16mm; ${marginTop}">`;
 
     for (let row = 0; row < maxQuestoesPerColumn; row++) {
       const idx = (col * maxQuestoesPerColumn) + row;
