@@ -108,14 +108,6 @@ const generateAnswerSheet = async (finalData) => {
   // 3. CONSTRUIR O HTML DO GABARITO - 4 COLUNAS COM MÁXIMO 15 QUESTÕES CADA
   let answerSheetHTML = `
     <div style="position: relative; padding: 12mm 8mm 10mm 8mm; margin-top: 5mm; page-break-inside: avoid;">
-      <!-- 4 L-shaped fiducial markers on left and right sides for perspective correction -->
-      <!-- Left side: top at ~35%, bottom at ~65% -->
-      <img src="data:image/svg+xml;base64,${L_LT_B64}" style="position: absolute; top: 35%; left: 1mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
-      <img src="data:image/svg+xml;base64,${L_LB_B64}" style="position: absolute; top: 65%; left: 1mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
-      <!-- Right side: top at ~35%, bottom at ~65% -->
-      <img src="data:image/svg+xml;base64,${L_RT_B64}" style="position: absolute; top: 35%; right: 1mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
-      <img src="data:image/svg+xml;base64,${L_RB_B64}" style="position: absolute; top: 65%; right: 1mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
-
       <!-- Cabeçalho do Gabarito com QR Code -->
       <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #ccc; padding-bottom: 3mm; margin-bottom: 3mm;">
           <div>
@@ -124,6 +116,13 @@ const generateAnswerSheet = async (finalData) => {
           </div>
           ${qrCodeImageBase64 ? `<img src="${qrCodeImageBase64}" style="width: ${qrDisplaySize}mm; height: ${qrDisplaySize}mm;" alt="QR Code">` : ''}
       </div>
+
+      <!-- 4 L-shaped fiducial markers: positioned to bracket the response grid -->
+      <!-- Top markers align with start of questions, bottom markers at end -->
+      <img src="data:image/svg+xml;base64,${L_LT_B64}" style="position: absolute; top: 8mm; left: 1mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
+      <img src="data:image/svg+xml;base64,${L_RT_B64}" style="position: absolute; top: 8mm; right: 1mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
+      <img src="data:image/svg+xml;base64,${L_LB_B64}" style="position: absolute; bottom: 2mm; left: 1mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
+      <img src="data:image/svg+xml;base64,${L_RB_B64}" style="position: absolute; bottom: 2mm; right: 1mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
 
       <!-- Grade de Respostas (4 colunas, máximo 15 questões por coluna, vertical com opções horizontais) -->
       <div style="display: flex; gap: 4mm; justify-content: space-between;">
