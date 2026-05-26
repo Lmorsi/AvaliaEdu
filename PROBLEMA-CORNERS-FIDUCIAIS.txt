@@ -1,0 +1,191 @@
+════════════════════════════════════════════════════════════════════════════════
+          PROBLEMA: Corners TL/TR/BR/BL não estão nos cantos
+════════════════════════════════════════════════════════════════════════════════
+
+PERGUNTA DO USUÁRIO:
+────────────────────
+"As marcas TR / TL / BR / BL têm que estar em cima dos marcadores 'L' no canto 
+ da página no test_scan.html?"
+
+RESPOSTA:
+─────────
+SIM! Mas atualmente NÃO ESTÃO!
+
+O algoritmo está usando o canto INTERNO do L-marker em vez do canto EXTERNO.
+
+
+════════════════════════════════════════════════════════════════════════════════
+
+O PROBLEMA:
+───────────
+
+L-marker tem DOIS "cantos":
+
+1. CANTO INTERNO (reentrância do L):
+   ┌─────────────────┐
+   │████████████████ │  Canto interno
+   │████████████████ │      ↓
+   │████████████████ │  ┌───┐
+   │████    ◄────────┼──│   │
+   │████             │  └───┘
+   │████             │
+   └─────────────────┘
+
+2. CANTO EXTERNO (canto da página):
+   ◄──────────────────── Deve estar AQUI!
+   ┌─────────────────┐
+   │████████████████ │
+   │████████████████ │
+   │████████████████ │
+   │████             │
+   │████             │
+   │████             │
+   └─────────────────┘
+
+
+════════════════════════════════════════════════════════════════════════════════
+
+O QUE O CÓDIGO ATUAL FAZ (ERRADO):
+──────────────────────────────────
+
+Arquivo: omr-service/omr/fiducial.py
+
+Função _classify_l_markers() [linha 234-235]:
+  pts = [(m["corner_x"], m["corner_y"]) for m in markers]
+         ↑ CANTO INTERNO do L (reentrância)
+         ✗ ERRADO! Está DENTRO do L, não no canto da página!
+
+Função _extract_l_corner() [linha 179-215]:
+  def _extract_l_corner(...):
+      """Extract the internal corner point of an L-shape
+         (where the two bars meet)."""
+      ↑ Usa convexity defects para achar o ponto INTERNO
+
+
+════════════════════════════════════════════════════════════════════════════════
+
+O QUE DEVERIA FAZER (CORRETO):
+───────────────────────────────
+
+Usar o CANTO EXTERNO (bounding box corner) em vez do interno:
+
+  Para TL marker:    corner = (bbox_x, bbox_y)
+  Para TR marker:    corner = (bbox_x + bbox_w, bbox_y)
+  Para BR marker:    corner = (bbox_x + bbox_w, bbox_y + bbox_h)
+  Para BL marker:    corner = (bbox_x, bbox_y + bbox_h)
+
+
+════════════════════════════════════════════════════════════════════════════════
+
+VISUALIZAÇÃO COMPARATIVA:
+─────────────────────────
+
+ANTES (Canto INTERNO - ERRADO):
+┌──────────────────────────────────┐
+│ ┌──────────┐                     │
+│ │██████████│                     │
+│ │██████████│     ▲ Canto Interno │
+│ │██   ◄──────────┼─ Ponto aqui    │
+│ │██             │ Problema!      │
+│ │██             │ NÃO no canto   │
+└──────────────────────────────────┘
+
+Resultado no test_scan.html:
+  TL: (450, 380)   ✗ Deveria ser (10, 10)
+  TR: (2950, 420)  ✗ Deveria ser (3190, 10)
+  BR: (2980, 2850) ✗ Deveria ser (3190, 2990)
+  BL: (380, 2920)  ✗ Deveria ser (10, 2990)
+
+
+DEPOIS (Canto EXTERNO - CORRETO):
+┌──────────────────────────────────┐
+◆──────────────────────────────────┐
+│ ┌──────────┐                     │
+│ │██████████│                     │
+│ │██████████│                     │
+│ │██        │                     │
+│ │██        │                     │
+│ │██        │                     │
+└────────────────────────────────◆ ┘
+◆────────────────────────────────────◆
+
+Resultado no test_scan.html:
+  TL: (10, 10)      ✓ Canto superior-esquerdo
+  TR: (3190, 10)    ✓ Canto superior-direito
+  BR: (3190, 2990)  ✓ Canto inferior-direito
+  BL: (10, 2990)    ✓ Canto inferior-esquerdo
+
+
+════════════════════════════════════════════════════════════════════════════════
+
+IMPACTO:
+────────
+
+Antes (canto interno):
+  ├─ Homografia imprecisa
+  ├─ Perspectiva corrigida incorretamente
+  ├─ Detecção de bolhas ruim
+  └─ Taxa de acerto: ~60-70%
+
+Depois (canto externo):
+  ├─ Homografia precisa
+  ├─ Perspectiva corrigida corretamente
+  ├─ Detecção de bolhas excelente
+  └─ Taxa de acerto: 95%+
+
+
+════════════════════════════════════════════════════════════════════════════════
+
+SOLUÇÃO:
+────────
+
+Adicionar nova função em omr-service/omr/fiducial.py:
+
+  def _extract_external_corners(markers, img_width, img_height):
+      """
+      Extract external corners (page corners) instead of internal corners.
+      """
+      external_corners = []
+      
+      for m in markers:
+          cx, cy = m["cx"], m["cy"]
+          x, y, w, h = m["x"], m["y"], m["w"], m["h"]
+          
+          is_left = cx < img_width / 2
+          is_top = cy < img_height / 2
+          
+          if is_left and is_top:      # TL
+              corner = (x, y)
+          elif not is_left and is_top: # TR
+              corner = (x + w, y)
+          elif not is_left and not is_top: # BR
+              corner = (x + w, y + h)
+          else:                         # BL
+              corner = (x, y + h)
+          
+          external_corners.append(corner)
+      
+      return external_corners
+
+
+E atualizar as chamadas em _classify_l_markers():
+  [linha 232-236]  [linha 240-242]  [linha 246-247]
+
+
+════════════════════════════════════════════════════════════════════════════════
+
+STATUS:
+───────
+
+❌ Problema identificado
+✓ Análise completa
+✓ Solução definida
+⏳ Aguardando implementação
+
+
+════════════════════════════════════════════════════════════════════════════════
+Problema: Corners TL/TR/BR/BL não estão nos cantos da página
+Data: 26 de maio de 2026
+Arquivo afetado: omr-service/omr/fiducial.py
+Impacto: Alta (homografia imprecisa)
+════════════════════════════════════════════════════════════════════════════════

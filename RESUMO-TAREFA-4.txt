@@ -1,0 +1,164 @@
+════════════════════════════════════════════════════════════════════════════════
+                        TAREFA 4: VALIDAÇÃO VISUAL
+════════════════════════════════════════════════════════════════════════════════
+
+O QUE É TAREFA 4?
+─────────────────
+
+Teste visual para garantir que a imagem CORRIGIDA não fica DISTORCIDA
+antes de avançar para testes OMR reais.
+
+Objetivo: Validar qualidade da correção de perspectiva (homografia)
+
+
+FLUXO TAREFA 4:
+───────────────
+
+1. Gerar PDF                      (aplicação web)
+2. Imprimir documento             (papel branco, 300 DPI)
+3. Fotografar com ângulo          (15-30°, boa iluminação)
+4. Upload no test_bubbles.html    (navegador)
+5. Validar 4 imagens de resultado
+
+
+4 IMAGENS DE RESULTADO A VALIDAR:
+──────────────────────────────────
+
+┌─────────────────────────────────────────────────────┐
+│ 1. IMAGEM COM MARCADORES (Debug Image)             │
+│    • Mostra 4 pontos coloridos nos cantos           │
+│    • Verde (TL), Amarelo (TR), Azul (BL), Vermelho │
+│    • Validar: 4 pontos visíveis nos cantos         │
+│                                                      │
+│ 2. IMAGEM CORRIGIDA (Corrected Image) ✅ CRÍTICA   │
+│    • Perspectiva corrigida (homografia aplicada)    │
+│    • Validar: FRONTAL, sem distorção, nítida       │
+│    • Se distorcida → FALHA TAREFA 4                 │
+│                                                      │
+│ 3. BOLHAS DETECTADAS (Bubble Detection)            │
+│    • Lista de bolhas encontradas (5 Q × 4 opções)  │
+│    • Validar: ~20 bolhas detectadas com status      │
+│                                                      │
+│ 4. DADOS BRUTOS (Raw JSON)                         │
+│    • debug_image, corrected_image, fiducials       │
+│    • Validar: campos preenchidos corretamente       │
+└─────────────────────────────────────────────────────┘
+
+
+CRITÉRIO SUCESSO - IMAGEM CORRIGIDA:
+────────────────────────────────────
+
+✅ Imagem aparece COMPLETAMENTE FRONTAL
+✅ Sem inclinação visível
+✅ Sem deformação de perspectiva
+✅ Bolhas em linhas retas
+✅ Proporções mantidas
+✅ Cores normais
+✅ Texto legível
+
+
+CRITÉRIO FALHA - IMAGEM CORRIGIDA:
+───────────────────────────────────
+
+❌ Imagem ainda INCLINADA ou TORTA
+❌ Deformação de perspectiva (barril/pincushion)
+❌ Bolhas não em linhas retas
+❌ Perspectiva não corrigida
+❌ Imagem muito escura/clara
+❌ Sem marcadores detectados
+
+
+PASSOS PRÁTICA - TAREFA 4:
+──────────────────────────
+
+1. Fotografar documento
+   ├─ Ângulo: 15-30° (não frontal, não muito inclinado)
+   ├─ Iluminação: Natural ou fluorescente (sem sombras)
+   ├─ Resolução: ≥2000×2500 pixels
+   └─ Qualidade: Nítida, em foco
+
+2. Abrir test_bubbles.html
+   ├─ Local: file:///path/to/omr-service/test_bubbles.html
+   └─ Web: http://localhost:8080/test_bubbles.html
+
+3. Upload foto
+   ├─ Clicar "Selecionar Foto"
+   ├─ Escolher foto tirada
+   └─ Aguardar processamento
+
+4. Validar resultado
+   ├─ Debug Image: 4 pontos nos cantos
+   ├─ Corrected Image: FRONTAL e SEM distorção ✅
+   ├─ Bolhas Detectadas: ~20 bolhas
+   └─ Dados Brutos: JSON completo
+
+
+DECISÃO TAREFA 4:
+─────────────────
+
+    Corrected Image está frontal?
+             ↓
+        ┌────┴────┐
+        ↓         ↓
+       SIM       NÃO
+        ↓         ↓
+      ✅ PASS  ❌ RETRY
+        ↓         ↓
+    Avançar    Fotografar
+    OMR Real   novamente
+
+
+VERSÃO RECOMENDADA:
+───────────────────
+
+Usar v6.0 para Tarefa 4:
+  • L-markers: 16px (em vez de 12px) → melhor detectabilidade
+  • Bolhas: 16px × 16px, 3px border → melhor contraste
+  • Taxa esperada: 95%+
+
+
+TROUBLESHOOTING:
+────────────────
+
+Problema                      Solução
+─────────────────────────────────────────────────────
+Marcadores não detectados     Melhorar iluminação
+                              Fotografar mais frontal
+                              Usar v6.0
+
+Imagem não corrigida          Fotografar < 30°
+                              Melhor qualidade
+                              v6.0 compilada
+
+Bolhas não detectadas         Imagem corrigida OK?
+                              Melhorar contraste
+                              Reimprimir
+
+Dados brutos vazios           Servidor OMR rodando?
+                              Console: Erros?
+
+
+STATUS TAREFA 4:
+────────────────
+
+✅ v6.0 compilada
+✅ test_bubbles.html pronto
+✅ Documentação completa
+⏳ Aguardando execução do teste visual
+
+
+DOCUMENTOS DE REFERÊNCIA:
+─────────────────────────
+
+• TAREFA-4-VALIDACAO-VISUAL.md    (guia completo)
+• CHECKLIST-TAREFA-4.md           (checklist executável)
+• RESUMO-FINAL-VERSAO-6.md        (specs v6.0)
+• CALIBRACAO-MARCADORES-L.md      (detalhes técnicos)
+
+
+════════════════════════════════════════════════════════════════════════════════
+TAREFA 4: Validação Visual - test_bubbles.html
+Versão: 6.0
+Data: 26 de maio de 2026
+Status: PRONTO PARA EXECUÇÃO
+════════════════════════════════════════════════════════════════════════════════
