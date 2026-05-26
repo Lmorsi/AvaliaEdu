@@ -301,5 +301,18 @@ async def scan_omr_sheet(photo: UploadFile = File(...), debug: bool = False):
 
 
 @app.get("/health")
+@app.get("/api/health")
 async def health_check():
-    return {"status": "ok"}
+    try:
+        import pyzbar
+        pyzbar_available = True
+    except ImportError:
+        pyzbar_available = False
+
+    return {
+        "status": "ok",
+        "service": "avaliaedu-omr",
+        "version": "0.1.0",
+        "opencv_available": True,
+        "pyzbar_available": pyzbar_available,
+    }

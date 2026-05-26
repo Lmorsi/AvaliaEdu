@@ -13,20 +13,38 @@ Python/FastAPI service for optical mark recognition of AvaliaEdu answer sheets.
 | 5 | Bubble reading | Pending |
 | 6 | Question type mapping (A-E, V/F, discursive) | Pending |
 
-## Running locally
+## Quick Start (All Platforms)
 
+### Step 1: Install dependencies
 ```bash
-# Create and activate virtualenv
-python -m venv .venv
-source .venv/bin/activate      # Linux/Mac
-.venv\Scripts\activate         # Windows
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Start the server (port 8000)
-uvicorn main:app --reload
+pip install --break-system-packages opencv-python-headless fastapi uvicorn python-multipart pyzbar numpy pillow
 ```
+
+Or if you prefer a virtual environment:
+```bash
+python3 -m venv .venv
+source .venv/bin/activate          # Linux/Mac
+# .venv\Scripts\activate           # Windows
+pip install -r requirements.txt
+```
+
+### Step 2: Start the OMR service
+```bash
+# From the omr-service directory:
+python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+### Step 3: Test with web interface
+Open `test_scan.html` in your browser:
+- **Via file**: Open `omr-service/test_scan.html` directly
+- **Via HTTP**: Run `python3 -m http.server 3000` from project root, then visit `http://localhost:3000/omr-service/test_scan.html`
+
+## Verification
+
+When the service is running, the test page should show:
+- ✓ Service online
+- ✓ OpenCV ok  
+- ✓ pyzbar ok
 
 Interactive API docs: http://localhost:8000/docs
 
