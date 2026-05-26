@@ -107,7 +107,7 @@ const generateAnswerSheet = async (finalData) => {
 
   // 3. CONSTRUIR O HTML DO GABARITO - 4 COLUNAS COM MÁXIMO 15 QUESTÕES CADA
   let answerSheetHTML = `
-    <div style="position: relative; padding: 12mm 8mm 10mm 8mm; margin-top: 5mm; page-break-inside: avoid;">
+    <div style="position: relative; padding: 12mm 24mm 10mm 24mm; margin-top: 5mm; page-break-inside: avoid;">
       <!-- Cabeçalho do Gabarito com QR Code -->
       <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #ccc; padding-bottom: 3mm; margin-bottom: 3mm;">
           <div>
@@ -126,13 +126,15 @@ const generateAnswerSheet = async (finalData) => {
       <img src="data:image/svg+xml;base64,${L_RB_B64}" style="position: absolute; bottom: 2mm; right: 12mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
 
       <!-- Grade de Respostas (4 colunas, máximo 15 questões por coluna, vertical com opções horizontais) -->
+      <!-- Increased padding (24mm = 12mm marker + 12mm gap) to keep bubbles within L-marker boundaries -->
       <div style="display: flex; gap: 4mm; justify-content: space-between;">
   `;
 
   // 4. GERAR AS BOLHAS DE RESPOSTA
-  // Distribuir questões em colunas: preencher coluna 1 (1-15), depois coluna 2 (16-30), coluna 3 (31-45), coluna 4 (46-60)
-  const maxQuestoesPerColumn = 15;
-  const totalColumns = 4;
+  // Distribuir questões em 3 colunas: coluna 1 (1-20), coluna 2 (21-40), coluna 3 (41-60)
+  // Use 3 columns for better space utilization
+  const maxQuestoesPerColumn = 20;
+  const totalColumns = 3;
 
   // Função para gerar o HTML de uma questão individual
   const generateQuestionBubbles = (item, questionNumber) => {
@@ -154,17 +156,17 @@ const generateAnswerSheet = async (finalData) => {
       const validAlternatives = item.alternativas.filter(alt => alt && alt.trim() !== '');
 
       questionHTML += `
-        <div style="display: flex; align-items: flex-start; margin: 1.5mm 0; break-inside: avoid;">
+        <div style="display: flex; align-items: flex-start; margin: 1.5mm 0 1.5mm 0; break-inside: avoid; margin-top: 0.5mm;">
           <span style="font-weight: bold; margin-right: 2mm; min-width: 6mm; font-size: 9px;">${questionNumber}</span>
-          <div style="display: flex; gap: 2mm; flex-wrap: wrap; align-items: flex-start;">
+          <div style="display: flex; gap: 1.2mm; flex-wrap: nowrap; align-items: flex-start; max-width: 90mm;">
       `;
 
       validAlternatives.forEach((_, altIndex) => {
         const letter = String.fromCharCode(65 + altIndex);
         questionHTML += `
-          <div style="display: flex; flex-direction: column; align-items: center; gap: 0.5mm;">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 0.3mm; flex-shrink: 0;">
             <span style="font-size: 7px; font-weight: bold; color: #333; height: 2mm; line-height: 2mm;">${letter}</span>
-            <div class="bubble" style="width: 18px; height: 18px; border: 1.3px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
+            <div class="bubble" style="width: 18px; height: 18px; border: 2px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
           </div>
         `;
       });
@@ -189,11 +191,11 @@ const generateAnswerSheet = async (finalData) => {
             <span style="font-size: 7px; font-weight: bold; min-width: 3mm;">${afirmIndex + 1}:</span>
             <div style="display: flex; flex-direction: column; align-items: center; gap: 0.3mm;">
               <span style="font-size: 6px; font-weight: bold; color: #333; height: 1.5mm;">V</span>
-              <div class="bubble" style="width: 18px; height: 18px; border: 1.3px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
+              <div class="bubble" style="width: 18px; height: 18px; border: 2px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
             </div>
             <div style="display: flex; flex-direction: column; align-items: center; gap: 0.3mm;">
               <span style="font-size: 6px; font-weight: bold; color: #333; height: 1.5mm;">F</span>
-              <div class="bubble" style="width: 18px; height: 18px; border: 1.3px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
+              <div class="bubble" style="width: 18px; height: 18px; border: 2px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
             </div>
           </div>
         `;
@@ -206,9 +208,12 @@ const generateAnswerSheet = async (finalData) => {
   };
 
   // Criar colunas explicitamente para garantir distribuição vertical
-  // Coluna 1: 1-15, Coluna 2: 16-30, Coluna 3: 31-45, Coluna 4: 46-60
+  // Coluna 1: 1-20, Coluna 2: 21-40, Coluna 3: 41-60 (3 columns for better space usage)
+  // Add padding-bottom to keep content away from bottom L-markers (2mm + 10mm marker + 4mm clearance = 16mm)
   for (let col = 0; col < totalColumns; col++) {
-    answerSheetHTML += `<div style="flex: 1; display: flex; flex-direction: column;">`;
+    // Add margin-top to first column for better spacing below L-markers
+    const marginTop = col === 0 ? 'margin-top: 6mm;' : '';
+    answerSheetHTML += `<div style="flex: 1; display: flex; flex-direction: column; padding-bottom: 16mm; ${marginTop}">`;
 
     for (let row = 0; row < maxQuestoesPerColumn; row++) {
       const idx = (col * maxQuestoesPerColumn) + row;
