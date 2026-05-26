@@ -95,12 +95,14 @@ def _is_l_shape(contour: np.ndarray) -> bool:
     return significant_defects == 1
 
 
-def _detect_l_markers(image: np.ndarray) -> list[tuple[int, int, int, int]]:
+def _detect_l_markers(image: np.ndarray) -> list[dict]:
     """
     Detect L-shaped fiducial markers in a BGR image.
 
-    Returns a list of (cx, cy, w, h) bounding boxes for each detected L-marker.
-    More robust preprocessing for faint/pale markers from photo scans.
+    Returns a list of dicts with L-marker info:
+      - cx, cy: centroid
+      - corner_x, corner_y: internal corner point (where bars meet)
+      - x, y, w, h: bounding box
     """
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
@@ -109,16 +111,12 @@ def _detect_l_markers(image: np.ndarray) -> list[tuple[int, int, int, int]]:
     enhanced = clahe.apply(gray)
 
     # Try multiple thresholding strategies to catch faint black markers
-    thresholds = []
-
     # Strategy 1: OTSU on enhanced image
     blurred = cv2.GaussianBlur(enhanced, (5, 5), 0)
     _, thresh1 = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    thresholds.append(("OTSU", thresh1))
 
     # Strategy 2: Manual threshold on original gray (catch very dark areas)
     _, thresh2 = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY_INV)
-    thresholds.append(("Manual@100", thresh2))
 
     # Combine thresholds: take union (logical OR)
     combined = cv2.bitwise_or(thresh1, thresh2)
@@ -142,7 +140,7 @@ def _detect_l_markers(image: np.ndarray) -> list[tuple[int, int, int, int]]:
 
         x, y, w, h = cv2.boundingRect(contour)
 
-        # Aspect ratio: L-markers are roughly square (0.4 to 2.5, relaxed from 0.5-2.0)
+        # Aspect ratio: L-markers are roughly square (0.3 to 3.0)
         aspect = w / h if h > 0 else 0
         if aspect < 0.3 or aspect > 3.0:
             continue
@@ -153,54 +151,119 @@ def _detect_l_markers(image: np.ndarray) -> list[tuple[int, int, int, int]]:
 
         cx = int(x + w / 2)
         cy = int(y + h / 2)
-        markers.append((cx, cy, w, h))
+
+        # Extract the internal corner of the L (where the two bars meet)
+        # Use convexity defect to find the corner point
+        corner_x, corner_y = _extract_l_corner(contour, x, y, w, h)
+
+        markers.append({
+            "cx": cx,
+            "cy": cy,
+            "corner_x": corner_x,
+            "corner_y": corner_y,
+            "x": x,
+            "y": y,
+            "w": w,
+            "h": h,
+            "area": area,
+        })
         logger.info(
-            "L-marker: cx=%d, cy=%d, w=%d, h=%d, area=%.0f",
-            cx, cy, w, h, area,
+            "L-marker: cx=%d, cy=%d, corner=(%d,%d), box=(%d,%d,%d,%d), area=%.0f",
+            cx, cy, corner_x, corner_y, x, y, w, h, area,
         )
 
     logger.info("L-marker detection: %d valid markers found", len(markers))
     return markers
 
 
+def _extract_l_corner(contour: np.ndarray, bbox_x: int, bbox_y: int, bbox_w: int, bbox_h: int) -> tuple[int, int]:
+    """
+    Extract the internal corner point of an L-shape (where the two bars meet).
+    Uses the convexity defect (the single large indent) to locate the corner.
+    Fallback: use approximate corner based on contour extremes.
+    """
+    contour_closed = contour.reshape(-1, 1, 2).astype(np.int32)
+    hull_indices = cv2.convexHull(contour_closed, returnPoints=False)
+
+    if hull_indices is not None and len(hull_indices) >= 3:
+        try:
+            defects = cv2.convexityDefects(contour_closed, hull_indices)
+            if defects is not None and len(defects) > 0:
+                # Find the deepest (most significant) defect
+                max_defect_idx = 0
+                max_depth = 0
+                for i, defect in enumerate(defects):
+                    depth = defect[0][3] / 256.0
+                    if depth > max_depth:
+                        max_depth = depth
+                        max_defect_idx = i
+
+                # The farthest point in the deepest defect is the L corner
+                defect = defects[max_defect_idx][0]
+                farthest_idx = defect[2]
+                corner_pt = contour[farthest_idx][0]
+                return int(corner_pt[0]), int(corner_pt[1])
+        except (cv2.error, IndexError):
+            pass
+
+    # Fallback: use extremes of the contour to estimate corner
+    # For an L in one of the 4 orientations, pick the inner corner
+    x_min = contour[:, 0, 0].min()
+    x_max = contour[:, 0, 0].max()
+    y_min = contour[:, 0, 1].min()
+    y_max = contour[:, 0, 1].max()
+
+    # Estimate corner based on bounding box position relative to image
+    # This is a heuristic based on which L orientation we expect
+    corner_x = (x_min + x_max) // 2
+    corner_y = (y_min + y_max) // 2
+
+    return corner_x, corner_y
+
+
 def _classify_l_markers(
-    markers: list[tuple[int, int, int, int]],
+    markers: list[dict],
     img_width: int,
     img_height: int,
 ) -> list[tuple[int, int]]:
     """
-    Classify detected L-markers into 4 expected positions:
-      Left-top, Right-top, Right-bottom, Left-bottom.
+    Classify detected L-markers into 4 expected positions using their internal corners.
 
-    Uses x-coordinate to split left/right, then y-coordinate to split top/bottom.
-
-    Returns ordered list: [left_top, right_top, right_bottom, left_bottom]
+    Returns ordered list: [top_left, top_right, bottom_right, bottom_left]
+    (the 4 corner points for perspective correction)
     """
+    if len(markers) == 0:
+        return [(0, 0), (img_width, 0), (img_width, img_height), (0, img_height)]
+
     mid_x = img_width / 2
+    mid_y = img_height / 2
 
-    left = [m for m in markers if m[0] < mid_x]
-    right = [m for m in markers if m[0] >= mid_x]
+    # Split into left/right and top/bottom quadrants using corner points
+    left = [m for m in markers if m["corner_x"] < mid_x]
+    right = [m for m in markers if m["corner_x"] >= mid_x]
 
-    # Sort each side by y-coordinate
-    left.sort(key=lambda m: m[1])
-    right.sort(key=lambda m: m[1])
+    left.sort(key=lambda m: m["corner_y"])
+    right.sort(key=lambda m: m["corner_y"])
 
     logger.info("L-marker classification: left=%d, right=%d", len(left), len(right))
 
-    # If uneven distribution, re-split using sorted x-coordinates
+    # Fallback if distribution is uneven
     if len(left) < 2 or len(right) < 2:
-        sorted_by_x = sorted(markers, key=lambda m: m[0])
+        sorted_by_x = sorted(markers, key=lambda m: m["corner_x"])
         left = sorted_by_x[:2]
-        right = sorted_by_x[2:] if len(sorted_by_x) > 2 else sorted_by_x[2:]
-        left.sort(key=lambda m: m[1])
-        right.sort(key=lambda m: m[1])
+        right = sorted_by_x[2:]
+        left.sort(key=lambda m: m["corner_y"])
+        right.sort(key=lambda m: m["corner_y"])
         logger.info("L-marker re-split: left=%d, right=%d", len(left), len(right))
 
-    # Pick top and bottom from each side
-    left_top = left[0][:2] if len(left) > 0 else (0, 0)
-    left_bottom = left[-1][:2] if len(left) > 1 else (0, img_height)
-    right_top = right[0][:2] if len(right) > 0 else (img_width, 0)
-    right_bottom = right[-1][:2] if len(right) > 1 else (img_width, img_height)
+    # Extract corner points
+    left_top = (left[0]["corner_x"], left[0]["corner_y"]) if len(left) > 0 else (0, 0)
+    left_bottom = (left[-1]["corner_x"], left[-1]["corner_y"]) if len(left) > 1 else (0, img_height)
+    right_top = (right[0]["corner_x"], right[0]["corner_y"]) if len(right) > 0 else (img_width, 0)
+    right_bottom = (right[-1]["corner_x"], right[-1]["corner_y"]) if len(right) > 1 else (img_width, img_height)
+
+    logger.info("L-marker corners: TL=%s, TR=%s, BR=%s, BL=%s",
+                left_top, right_top, right_bottom, left_bottom)
 
     # TL, TR, BR, BL order
     return [left_top, right_top, right_bottom, left_bottom]
@@ -250,15 +313,21 @@ def detect_fiducials(image: np.ndarray) -> FiducialResult:
 
 
 def draw_fiducials(image: np.ndarray, result: FiducialResult) -> np.ndarray:
-    """Draw detected L-shaped markers on a copy of the image (for debugging)."""
+    """Draw detected L-shaped markers and their internal corners (for debugging)."""
     annotated = image.copy()
 
-    # Re-detect and draw raw L-marker contours
+    # Re-detect and draw L-marker contours
     gray = cv2.cvtColor(annotated, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-    processed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
+    blurred = cv2.GaussianBlur(enhanced, (5, 5), 0)
+    _, thresh1 = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    _, thresh2 = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY_INV)
+    combined = cv2.bitwise_or(thresh1, thresh2)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    opened = cv2.morphologyEx(combined, cv2.MORPH_OPEN, kernel, iterations=1)
+    kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
+    processed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel_close, iterations=2)
     contours, _ = cv2.findContours(processed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     for contour in contours:
@@ -271,13 +340,19 @@ def draw_fiducials(image: np.ndarray, result: FiducialResult) -> np.ndarray:
     if not result.found or result.corners is None:
         return annotated
 
-    labels = ["LT", "RT", "RB", "LB"]
+    # Draw the 4 corner points used for perspective correction
+    labels = ["TL", "TR", "BR", "BL"]
     colors = [(0, 255, 0), (0, 200, 255), (0, 0, 255), (255, 100, 0)]
 
     for corner, label, color in zip(result.corners, labels, colors):
         cx, cy = int(corner[0]), int(corner[1])
-        cv2.circle(annotated, (cx, cy), 15, color, 3)
-        cv2.putText(annotated, label, (cx + 18, cy - 18),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+        cv2.circle(annotated, (cx, cy), 12, color, 3)
+        cv2.putText(annotated, label, (cx + 15, cy - 15),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+
+    # Draw quadrilateral connecting all 4 corners (perspective outline)
+    if len(result.corners) == 4:
+        pts = np.array([[int(c[0]), int(c[1])] for c in result.corners], dtype=np.int32)
+        cv2.polylines(annotated, [pts], True, (100, 255, 100), 2)
 
     return annotated
