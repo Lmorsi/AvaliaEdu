@@ -22,86 +22,83 @@ from omr.models import FiducialResult
 logger = logging.getLogger(__name__)
 
 
-def _detect_bubble_grid_region(image: np.ndarray) -> Optional[list[tuple[float, float]]]:
+def _detect_content_area_via_edges(image: np.ndarray) -> Optional[list[tuple[float, float]]]:
     """
-    Detect the answer bubble grid region by finding circular shapes (bubbles).
-    Uses the bounding box of all detected bubbles to determine fiducial corners.
+    Detect the main content area of the answer sheet using edge detection + line detection.
+    More robust than bubble detection because it works on ANY scanned document,
+    regardless of printing quality or distortion.
 
-    Returns 4 corner points [TL, TR, BR, BL] based on bubble locations, or None if fails.
+    Strategy:
+    1. Detect strong horizontal and vertical edges
+    2. Find the principal content area
+    3. Use the content boundary as fiducial corners
+
+    Returns 4 corner points [TL, TR, BR, BL] or None if detection fails.
     """
     h, w = image.shape[:2]
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    # Apply Otsu's thresholding to separate dark bubbles from background
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    # Apply morphological closing to fill small holes and connect broken lines
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    closed = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel, iterations=2)
 
-    # Morphological operations to enhance circles
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    processed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=1)
+    # Detect edges of the content (white background + dark content)
+    # Use Canny with aggressive parameters to find clear boundaries
+    edges = cv2.Canny(closed, 30, 100)
+
+    logger.info("Edge detection: found edges")
+
+    # Dilate edges to make them continuous
+    kernel_dilate = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    edges_dilated = cv2.dilate(edges, kernel_dilate, iterations=2)
 
     # Find contours
-    contours, _ = cv2.findContours(processed, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(edges_dilated, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-    logger.info("Bubble detection: found %d contours", len(contours))
+    if not contours:
+        logger.warning("No contours found in edge detection")
+        return None
 
-    # Find circles (bubbles)
-    bubble_boxes = []
+    logger.info("Found %d contours from edges", len(contours))
+
+    # Filter contours: find the largest one that spans most of the image
+    # (should be the outer content boundary)
+    best_contour = None
+    best_area = 0
+
     for contour in contours:
         area = cv2.contourArea(contour)
 
-        # Bubble area range (optimized for typical bubble size)
-        if not (100 < area < 2000):
+        # Contour should be reasonably large (at least 10% of image)
+        if area < (w * h) * 0.10:
             continue
 
-        x, y, bw, bh = cv2.boundingRect(contour)
-
-        # Bubbles should be roughly square
-        aspect_ratio = float(bw) / bh if bh > 0 else 0
-        if aspect_ratio < 0.7 or aspect_ratio > 1.3:
+        # Contour should not be too large (not the entire image)
+        if area > (w * h) * 0.95:
             continue
 
-        # Check circularity (4π*area / perimeter²)
-        perimeter = cv2.arcLength(contour, True)
-        if perimeter < 1:
-            continue
-        circularity = 4 * np.pi * area / (perimeter * perimeter)
-        if circularity < 0.70:
-            continue
+        if area > best_area:
+            best_area = area
+            best_contour = contour
 
-        bubble_boxes.append((x, y, bw, bh))
-        logger.debug("Bubble: x=%d, y=%d, w=%d, h=%d, area=%.0f, circ=%.3f", x, y, bw, bh, area, circularity)
-
-    logger.info("Bubble detection: found %d valid bubbles", len(bubble_boxes))
-
-    if len(bubble_boxes) < 4:
-        logger.warning("Too few bubbles detected (%d < 4)", len(bubble_boxes))
+    if best_contour is None:
+        logger.warning("No suitable contour found for content area")
         return None
 
-    # Get bounding box of all bubbles
-    all_x = [b[0] for b in bubble_boxes]
-    all_y = [b[1] for b in bubble_boxes]
-    all_x2 = [b[0] + b[2] for b in bubble_boxes]
-    all_y2 = [b[1] + b[3] for b in bubble_boxes]
+    logger.info("Selected contour area: %.0f", best_area)
 
-    min_x = min(all_x)
-    min_y = min(all_y)
-    max_x = max(all_x2)
-    max_y = max(all_y2)
+    # Get bounding box
+    x, y, bw, bh = cv2.boundingRect(best_contour)
 
-    logger.info("Bubble grid bounding box: (%d,%d) to (%d,%d)", min_x, min_y, max_x, max_y)
-
-    # Add margins around bubble grid (10% padding) to include edges
-    margin_x = int((max_x - min_x) * 0.10)
-    margin_y = int((max_y - min_y) * 0.10)
-
+    # Convert to corners
     corners = [
-        (float(min_x - margin_x), float(min_y - margin_y)),  # TL
-        (float(max_x + margin_x), float(min_y - margin_y)),  # TR
-        (float(max_x + margin_x), float(max_y + margin_y)),  # BR
-        (float(min_x - margin_x), float(max_y + margin_y)),  # BL
+        (float(x), float(y)),  # TL
+        (float(x + bw), float(y)),  # TR
+        (float(x + bw), float(y + bh)),  # BR
+        (float(x), float(y + bh)),  # BL
     ]
 
-    logger.info("Bubble-based fiducials: TL=(%.0f,%.0f) | TR=(%.0f,%.0f) | BR=(%.0f,%.0f) | BL=(%.0f,%.0f)",
+    logger.info("Content area fiducials: TL=(%.0f,%.0f) | TR=(%.0f,%.0f) | BR=(%.0f,%.0f) | BL=(%.0f,%.0f)",
                 corners[0][0], corners[0][1], corners[1][0], corners[1][1],
                 corners[2][0], corners[2][1], corners[3][0], corners[3][1])
 
@@ -317,7 +314,7 @@ def detect_fiducials(image: np.ndarray) -> FiducialResult:
     Detect fiducial points for perspective correction.
 
     Strategy (in order of preference):
-    1. Detect answer bubbles - most reliable (bubbles are always present)
+    1. Content area detection (edge-based) - most robust
     2. Detect rectangle border - fallback
     3. Use image edges - final fallback
 
@@ -335,16 +332,16 @@ def detect_fiducials(image: np.ndarray) -> FiducialResult:
     corners_resized = None
     detection_method = None
 
-    # Strategy 1: Try bubble detection (most reliable)
-    logger.info("Attempting bubble-based fiducial detection...")
-    corners_resized = _detect_bubble_grid_region(resized)
+    # Strategy 1: Try content area detection (edge-based, most robust for any document)
+    logger.info("Attempting content area edge detection...")
+    corners_resized = _detect_content_area_via_edges(resized)
     if corners_resized is not None:
         corners_resized = _validate_rectangle_corners(corners_resized, 900, new_h)
         if corners_resized is not None:
-            detection_method = "BUBBLES"
-            logger.info("✓ Bubble-based detection succeeded")
+            detection_method = "EDGES"
+            logger.info("✓ Content area edge detection succeeded")
 
-    # Strategy 2: Try rectangle border detection (if bubbles failed)
+    # Strategy 2: Try rectangle border detection (fallback)
     if corners_resized is None:
         logger.info("Attempting rectangle border detection...")
         corners_resized = _detect_rectangle_border(resized)
@@ -363,7 +360,7 @@ def detect_fiducials(image: np.ndarray) -> FiducialResult:
             (900, new_h),
             (0, new_h),
         ]
-        detection_method = "EDGES"
+        detection_method = "EDGES_FALLBACK"
 
     # Scale corners back to original image size
     corners = [
