@@ -2,11 +2,11 @@
 
 ## Problema Identificado
 
-A função `window.print()` do navegador tinha controle limitado sobre a paginação, causando sobreposição de dados nas últimas páginas quando imprimindo relatórios com muitas tabelas e dados.
+A função `window.print()\` do navegador tinha controle limitado sobre a paginação, causando sobreposição de dados nas últimas páginas quando imprimindo relatórios com muitas tabelas e dados.
 
 ## Solução Implementada
 
-Substituímos o `window.print()` por uma geração de PDF programática usando a biblioteca **jsPDF**, que já estava instalada no projeto. Isso nos dá controle total sobre:
+Substituímos o `window.print()\` por uma geração de PDF programática usando a biblioteca **jsPDF**, que já estava instalada no projeto. Isso nos dá controle total sobre:
 
 - Quebras de página
 - Posicionamento exato de cada elemento
@@ -17,7 +17,7 @@ Substituímos o `window.print()` por uma geração de PDF programática usando a
 
 ### 1. Novo Arquivo: `src/utils/compiledReportPDF.ts`
 
-Este arquivo contém a função `generateCompiledReportPDF()` que:
+Este arquivo contém a função `generateCompiledReportPDF()\` que:
 
 - Recebe os dados do relatório compilado
 - Cria um documento PDF página por página
@@ -31,16 +31,16 @@ Este arquivo contém a função `generateCompiledReportPDF()` que:
 ### 2. Modificado: `src/components/sections/CompiledReportsView.tsx`
 
 - Importa a nova função de geração de PDF
-- Substitui o botão "Imprimir" por "Gerar PDF"
+- Substitui o botão "Imprimir\" por "Gerar PDF"
 - Passa os dados necessários para a função de geração
 
 ## Como Funciona
 
-1. **Usuário clica em "Gerar PDF"**: O botão agora chama `generateCompiledReportPDF()` ao invés de `window.print()`
+1. **Usuário clica em "Gerar PDF"**: O botão agora chama `generateCompiledReportPDF()\` ao invés de `window.print()`
 
 2. **Verificação de espaço**: Antes de adicionar cada elemento, a função verifica se há espaço suficiente na página atual. Se não houver, adiciona uma nova página automaticamente.
 
-3. **Controle de paginação**: A função `checkPageBreak(requiredSpace)` garante que nenhum dado será cortado ou sobreposto.
+3. **Controle de paginação**: A função `checkPageBreak(requiredSpace)\` garante que nenhum dado será cortado ou sobreposto.
 
 4. **Download automático**: Ao finalizar, o PDF é automaticamente baixado com um nome descritivo incluindo o nome da avaliação e a data.
 

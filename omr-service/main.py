@@ -19,7 +19,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-# --- Detecção de Marcadores L usando Harris Corner Detection ---
+# --- Funções de detecção L (LEGADO - não mais utilizadas) ---
+# Mantidas para compatibilidade, mas detect_fiducials() é preferida para quadrados
 
 
 def _detect_l_marker_harris(image: np.ndarray, target_corner: str) -> Optional[Tuple[float, float]]:
@@ -445,10 +446,10 @@ async def scan_omr_sheet(photo: UploadFile = File(...), debug: bool = False):
         original_h, original_w = image.shape[:2]
         logger.info(f"Imagem recebida: {original_w}x{original_h}")
 
-        # 2. Detectar marcadores L nos 4 cantos
-        logger.info("Detectando marcadores L nos cantos...")
-        fiducial_result = detect_l_markers(image)
-        logger.info("Marcadores L: encontrados=%s, count=%d", fiducial_result.found, fiducial_result.count)
+        # 2. Detectar quadrados fiduciais nos 4 cantos
+        logger.info("Detectando marcadores quadrados nos cantos...")
+        fiducial_result = detect_fiducials(image)
+        logger.info("Marcadores quadrados: encontrados=%s, count=%d", fiducial_result.found, fiducial_result.count)
 
         # 3. Corrigir perspectiva
         corrected_image = image.copy()
@@ -471,8 +472,8 @@ async def scan_omr_sheet(photo: UploadFile = File(...), debug: bool = False):
                 scale = 1240 / original_w
                 corrected_image = cv2.resize(image, (1240, int(original_h * scale)))
         else:
-            # Sem marcadores L - apenas redimensionar
-            logger.warning("Marcadores L não detectados, redimensionando sem correção de perspectiva")
+            # Sem marcadores - apenas redimensionar
+            logger.warning("Marcadores quadrados não detectados, redimensionando sem correção de perspectiva")
             scale = 1240 / original_w
             corrected_image = cv2.resize(image, (1240, int(original_h * scale)))
 

@@ -90,20 +90,13 @@ const generateAnswerSheet = async (finalData) => {
     console.error('Falha ao gerar QR Code', err);
   }
 
-  // L-shaped fiducial markers on the LEFT and RIGHT sides of the answer sheet.
-  // 10mm markers with thick bars (20% of marker size).
-  // Layout: 2 L-markers on the left side, 2 on the right side, at ~35% and ~65% height.
-  // Left markers: vertical bar on left, horizontal bar on top (└) or bottom
-  // Right markers: vertical bar on right, horizontal bar on top or bottom (┘)
-  const L_MARKER_LEFT_TOP = `<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60"><rect x="0" y="0" width="60" height="12" fill="black"/><rect x="0" y="0" width="12" height="60" fill="black"/></svg>`;
-  const L_MARKER_LEFT_BOTTOM = `<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60"><rect x="0" y="48" width="60" height="12" fill="black"/><rect x="0" y="0" width="12" height="60" fill="black"/></svg>`;
-  const L_MARKER_RIGHT_TOP = `<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60"><rect x="0" y="0" width="60" height="12" fill="black"/><rect x="48" y="0" width="12" height="60" fill="black"/></svg>`;
-  const L_MARKER_RIGHT_BOTTOM = `<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60"><rect x="0" y="48" width="60" height="12" fill="black"/><rect x="48" y="0" width="12" height="60" fill="black"/></svg>`;
+  // Solid square fiducial markers for better detection in OMR processing.
+  // 10mm markers for reliable corner detection.
+  // Layout: 4 square markers at each corner of the response area.
+  // All markers have the same size and shape for consistency.
+  const SQUARE_MARKER = `<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60"><rect x="0" y="0" width="60" height="60" fill="black"/></svg>`;
 
-  const L_LT_B64 = Buffer.from(L_MARKER_LEFT_TOP).toString('base64');
-  const L_LB_B64 = Buffer.from(L_MARKER_LEFT_BOTTOM).toString('base64');
-  const L_RT_B64 = Buffer.from(L_MARKER_RIGHT_TOP).toString('base64');
-  const L_RB_B64 = Buffer.from(L_MARKER_RIGHT_BOTTOM).toString('base64');
+  const SQUARE_B64 = Buffer.from(SQUARE_MARKER).toString('base64');
 
   // 3. CONSTRUIR O HTML DO GABARITO - 4 COLUNAS COM MÁXIMO 15 QUESTÕES CADA
   let answerSheetHTML = `
@@ -117,16 +110,16 @@ const generateAnswerSheet = async (finalData) => {
           ${qrCodeImageBase64 ? `<img src="${qrCodeImageBase64}" style="width: ${qrDisplaySize}mm; height: ${qrDisplaySize}mm;" alt="QR Code">` : ''}
       </div>
 
-      <!-- 4 L-shaped fiducial markers: positioned to bracket the response grid -->
+      <!-- 4 solid square fiducial markers: positioned to bracket the response grid -->
       <!-- Top markers well below QR code, centered on response area -->
       <!-- Bottom markers at the end of response area -->
-      <img src="data:image/svg+xml;base64,${L_LT_B64}" style="position: absolute; top: 55mm; left: 12mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
-      <img src="data:image/svg+xml;base64,${L_RT_B64}" style="position: absolute; top: 55mm; right: 12mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
-      <img src="data:image/svg+xml;base64,${L_LB_B64}" style="position: absolute; bottom: 2mm; left: 12mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
-      <img src="data:image/svg+xml;base64,${L_RB_B64}" style="position: absolute; bottom: 2mm; right: 12mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
+      <img src="data:image/svg+xml;base64,${SQUARE_B64}" style="position: absolute; top: 55mm; left: 12mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
+      <img src="data:image/svg+xml;base64,${SQUARE_B64}" style="position: absolute; top: 55mm; right: 12mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
+      <img src="data:image/svg+xml;base64,${SQUARE_B64}" style="position: absolute; bottom: 2mm; left: 12mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
+      <img src="data:image/svg+xml;base64,${SQUARE_B64}" style="position: absolute; bottom: 2mm; right: 12mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
 
       <!-- Grade de Respostas (4 colunas, máximo 15 questões por coluna, vertical com opções horizontais) -->
-      <!-- Increased padding (24mm = 12mm marker + 12mm gap) to keep bubbles within L-marker boundaries -->
+      <!-- Increased padding (24mm = 12mm marker + 12mm gap) to keep bubbles within square marker boundaries -->
       <div style="display: flex; gap: 4mm; justify-content: space-between;">
   `;
 

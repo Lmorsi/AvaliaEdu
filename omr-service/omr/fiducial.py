@@ -1,14 +1,19 @@
 """
-Fiducial marker detection using bubble grid detection.
+Fiducial marker detection for square markers.
 
-This approach detects the actual answer bubble circles in the image,
-then uses their bounding box to determine the fiducial corner points.
-This is more robust than detecting physical markers because:
-  - Bubbles are always present and consistently placed
-  - Works regardless of printing quality or marker artifacts
-  - Automatically finds the actual content area (not page borders)
-  - Handles severe perspective distortion better
-  - Falls back to edge detection if bubble detection fails
+This approach detects solid square fiducial markers placed at the corners
+of the answer sheet. These markers are used for perspective correction.
+
+Detection strategy:
+  1. Edge detection to find content boundaries
+  2. Rectangle/contour detection to identify marker regions
+  3. Corner extraction for perspective transformation
+  4. Multiple fallback strategies for robustness
+
+Benefits of solid square markers:
+  - Simple geometry, easier to detect reliably
+  - Consistent size and shape across all 4 corners
+  - Robust against partial occlusion or printing quality issues
 """
 
 import logging
