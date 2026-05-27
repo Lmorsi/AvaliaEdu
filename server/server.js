@@ -90,60 +90,22 @@ const generateAnswerSheet = async (finalData) => {
     console.error('Falha ao gerar QR Code', err);
   }
 
-  // ArUco fiducial markers for robust detection in OMR processing.
-  // Using DICT_4X4_50 with IDs 0, 1, 2, 3 for each corner.
-  // These markers have unique patterns that can be identified even at different angles.
-  // Size: 10mm on the PDF, rendered at 60x60 viewBox for high quality.
-
-  // Função para criar SVG de marcador ArUco
-  const createArUcoSVG = (pattern) => {
-    const size = 60;
-    const cellSize = size / 6;
-
-    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">`;
-
-    // Fundo branco
-    svg += `<rect x="0" y="0" width="${size}" height="${size}" fill="white"/>`;
-
-    // Borda preta
-    svg += `<rect x="0" y="0" width="${size}" height="${cellSize}" fill="black"/>`;
-    svg += `<rect x="0" y="${size - cellSize}" width="${size}" height="${cellSize}" fill="black"/>`;
-    svg += `<rect x="0" y="0" width="${cellSize}" height="${size}" fill="black"/>`;
-    svg += `<rect x="${size - cellSize}" y="0" width="${cellSize}" height="${size}" fill="black"/>`;
-
-    // Padrão interno 4x4
-    const offset = cellSize;
-    for (let row = 0; row < 4; row++) {
-      for (let col = 0; col < 4; col++) {
-        if (pattern[row][col] === 1) {
-          const x = offset + col * cellSize;
-          const y = offset + row * cellSize;
-          svg += `<rect x="${x}" y="${y}" width="${cellSize}" height="${cellSize}" fill="black"/>`;
-        }
-      }
-    }
-
-    svg += '</svg>';
-    return svg;
-  };
-
-  // Padrões ArUco DICT_4X4_50 (IDs 0-3)
-  const ARUCO_PATTERNS = {
-    TL: [[0,0,0,1],[0,0,1,0],[0,1,0,1],[1,0,1,1]],  // ID 0
-    TR: [[0,1,0,0],[1,0,0,0],[0,0,1,0],[0,0,1,1]],  // ID 1
-    BL: [[0,0,1,0],[0,1,0,0],[1,0,0,0],[0,1,1,1]],  // ID 2
-    BR: [[0,1,1,0],[1,0,0,1],[1,0,0,0],[0,1,1,0]]   // ID 3
-  };
-
-  // Gerar SVGs e converter para base64
-  const ARUCO_TL_B64 = Buffer.from(createArUcoSVG(ARUCO_PATTERNS.TL)).toString('base64');
-  const ARUCO_TR_B64 = Buffer.from(createArUcoSVG(ARUCO_PATTERNS.TR)).toString('base64');
-  const ARUCO_BL_B64 = Buffer.from(createArUcoSVG(ARUCO_PATTERNS.BL)).toString('base64');
-  const ARUCO_BR_B64 = Buffer.from(createArUcoSVG(ARUCO_PATTERNS.BR)).toString('base64');
+  // ArUco markers (DICT_4X4_50, IDs 0-3, 80x80px PNG) embedded as base64.
+  // TL=ID0, TR=ID1, BL=ID2, BR=ID3 — used by fiducial.py for alignment.
+  const ARUCO_TL = 'iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAAAAACreq1xAAABVklEQVRYCa3BsQ3AQBDDMGn/oZ3WKQxc8aQ8Jo/JY/KYPCaPyWPymDwmj8lj8pg8Jo/JTyhSwiRFfkKREiYp8hOKlDBJkZ9QpIRJivyEIiVMUuQnFClhkiI/oUgJkxT5CUVKmKTITyhSwiRFfkKREiYp8hOKlDBJkZ9QpIRJivyEIiVMUmQLRVooUmQLRVooUmQLRVooUmQLRVooUmQLRVooUmQLRVooUmQLRVooUmQLRVooUmQLRVooUmQLRVooUmQLRVooUmQLRVooUmQLRVooUuQoTFLkKExS5ChMUuQoTFLkKExS5ChMUuQoTFLkKExS5ChMUuQoTFLkKExS5ChMUuQoTFLkKExS5Cg0WeQoNFnkKDRZ5Cg0WeQoNFnkKDRZ5Cg0WeQoNFnkKDRZ5Cg0WeQoNFnkKDRZ5Cg0WeQxeUwek8fkMXlMHpPH5DF5TB6Tx+SxD9qPT1FfMmdGAAAAAElFTkSuQmCC';
+  const ARUCO_TR = 'iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAAAAACreq1xAAABOUlEQVRYCa3BsQ0AMAzDMOn/o93VGbIUIeWYHJNjckyOyTE5JsfkmByTY3JMjskxOSbH5Jgck2NyTI7JMTkmx+SYHJNjMoQPUmQIH6TIED5IkSF8kCJD+CBFhvBBigzhgxQZwgcpMoQPUmQIH6TIED5IkSF8kCJD+CBFhlBkFYoUGUKRVShSZAhFVqFIkSEUWYUiRYZQZBWKFBlCkVUoUmQIRVahSJEhFFmFIkWGUGQVihQZQpFVKFJkCEVWoUiRIRRZhSJFhlBkFYoUGUKRVShSZAhFSmiykSEUKaHJRoZQpIQmGxlCkRKabGQIRUpospEhFCmhyUaGUKSEJhsZQpESmmxkCEVKaLKRIRQpoclGhlCkhCYbGUKREppsZAhFSmiykWNyTI7JMTkmx+SYHJNjckyOyTE59gBxIUNRPphgnAAAAABJRU5ErkJggg==';
+  const ARUCO_BL = 'iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAAAAACreq1xAAABPElEQVRYCa3BsQ3AQBDDMGn/oZ3WKQxc8aQ8Jo/JY/KYPCaPyWPymDwmj8lj8pg8Jo/JUZikyFGYpMhRmKTIUZikyFGYpMhRmKTIUZikyFGYpMhRmKTIUZikyFGYpMhRmKTIUZikyFGYpMhRmKTIUZikyFGYpMhRmKTIUZikyFGYpMhRmKTIUZikyFGYpMhRmKTIUZikyFGYpMhRaLLIUWiyyFFosshRaLLIUWiyyFFosshRaLLIUWiyyFFosshRaLLIUWiyyFFosshRaLLIUWiyyE9YpIUiRX7CIi0UKfITFmmhSJGfsEgLRYr8hEVaKFLkJyzSQpEiP2GRFooU+QmLtFCkyE9YpIUiRX7CIi0UKfITFmmhSJGfsEgLRYr8hEVaKFLkMXlMHpPH5DF5TB6Tx+QxeUwek8fksQ9WwEJRKD0mKQAAAABJRU5ErkJggg==';
+  const ARUCO_BR = 'iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAAAAACreq1xAAABVklEQVRYCa3BsQ3AQBDDMGn/oZ3WXxhIcaQck2NyTI7JMTkmx+SYHJNjckyOyTE5Jo9QZApFijxCkSkUKfIIRaZQpMgjFJlCkSKPUGQKRYo8QpEpFCnyCEWmUKTIIxSZQpEij1BkCkWKPEKRKRQp8ghFplCkyCMUmUKRIo9QZApFijxCkSkUKfIIRaZQpMgjFJlCkSKPUGQKRYo8QpEpFCnyCEWmUKTIIxSZQpEij1BkCkWKPEKRKRQp8ghFplCkyCMUmUKRIo9QZApFijxCkSkUKbKFIv/IFor8I1so8o9socg/soUi/8gWivwjWyjyj2yhyD+yhSL/yBaK/CNbKPKPbKHIP7KFIv/IFor8I1uYZJEtTLLIFiZZZAuTLLKFSRbZwiSLbGGSRbYwySJbmGSRLUyyyBYmWWQLkyyyhUkWOSbH5Jgck2NyTI7JMTkmx+SYHJNjHy1+T1Gj/ihKAAAAAElFTkSuQmCC';
 
   // 3. CONSTRUIR O HTML DO GABARITO - 4 COLUNAS COM MÁXIMO 15 QUESTÕES CADA
   let answerSheetHTML = `
-    <div style="position: relative; padding: 12mm 24mm 10mm 24mm; margin-top: 5mm; page-break-inside: avoid;">
+    <div style="position: relative; padding: 12mm 12mm 10mm 12mm; margin-top: 5mm; page-break-inside: avoid;">
+      <!-- 4 ArUco Markers nos cantos (DICT_4X4_50: TL=ID0, TR=ID1, BL=ID2, BR=ID3) -->
+      <img src="data:image/png;base64,${ARUCO_TL}" style="position: absolute; top: 1mm; left: 1mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
+      <img src="data:image/png;base64,${ARUCO_TR}" style="position: absolute; top: 1mm; right: 1mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
+      <img src="data:image/png;base64,${ARUCO_BL}" style="position: absolute; bottom: 1mm; left: 1mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
+      <img src="data:image/png;base64,${ARUCO_BR}" style="position: absolute; bottom: 1mm; right: 1mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
+
       <!-- Cabeçalho do Gabarito com QR Code -->
       <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #ccc; padding-bottom: 3mm; margin-bottom: 3mm;">
           <div>
@@ -153,25 +115,14 @@ const generateAnswerSheet = async (finalData) => {
           ${qrCodeImageBase64 ? `<img src="${qrCodeImageBase64}" style="width: ${qrDisplaySize}mm; height: ${qrDisplaySize}mm;" alt="QR Code">` : ''}
       </div>
 
-      <!-- 4 ArUco fiducial markers (DICT_4X4_50, IDs 0-3): positioned to bracket the response grid -->
-      <!-- Each marker has a unique pattern for robust identification -->
-      <!-- Top markers well below QR code, centered on response area -->
-      <!-- Bottom markers at the end of response area -->
-      <img src="data:image/svg+xml;base64,${ARUCO_TL_B64}" style="position: absolute; top: 55mm; left: 12mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
-      <img src="data:image/svg+xml;base64,${ARUCO_TR_B64}" style="position: absolute; top: 55mm; right: 12mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
-      <img src="data:image/svg+xml;base64,${ARUCO_BL_B64}" style="position: absolute; bottom: 2mm; left: 12mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
-      <img src="data:image/svg+xml;base64,${ARUCO_BR_B64}" style="position: absolute; bottom: 2mm; right: 12mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
-
       <!-- Grade de Respostas (4 colunas, máximo 15 questões por coluna, vertical com opções horizontais) -->
-      <!-- Padding adequado para manter bolhas dentro dos limites dos marcadores ArUco -->
       <div style="display: flex; gap: 4mm; justify-content: space-between;">
   `;
 
   // 4. GERAR AS BOLHAS DE RESPOSTA
-  // Distribuir questões em 3 colunas: coluna 1 (1-20), coluna 2 (21-40), coluna 3 (41-60)
-  // Use 3 columns for better space utilization
-  const maxQuestoesPerColumn = 20;
-  const totalColumns = 3;
+  // Distribuir questões em colunas: preencher coluna 1 (1-15), depois coluna 2 (16-30), coluna 3 (31-45), coluna 4 (46-60)
+  const maxQuestoesPerColumn = 15;
+  const totalColumns = 4;
 
   // Função para gerar o HTML de uma questão individual
   const generateQuestionBubbles = (item, questionNumber) => {
@@ -193,17 +144,17 @@ const generateAnswerSheet = async (finalData) => {
       const validAlternatives = item.alternativas.filter(alt => alt && alt.trim() !== '');
 
       questionHTML += `
-        <div style="display: flex; align-items: flex-start; margin: 1.5mm 0 1.5mm 0; break-inside: avoid; margin-top: 0.5mm;">
+        <div style="display: flex; align-items: flex-start; margin: 1.5mm 0; break-inside: avoid;">
           <span style="font-weight: bold; margin-right: 2mm; min-width: 6mm; font-size: 9px;">${questionNumber}</span>
-          <div style="display: flex; gap: 1.2mm; flex-wrap: nowrap; align-items: flex-start; max-width: 90mm;">
+          <div style="display: flex; gap: 2mm; flex-wrap: wrap; align-items: flex-start;">
       `;
 
       validAlternatives.forEach((_, altIndex) => {
         const letter = String.fromCharCode(65 + altIndex);
         questionHTML += `
-          <div style="display: flex; flex-direction: column; align-items: center; gap: 0.3mm; flex-shrink: 0;">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 0.5mm;">
             <span style="font-size: 7px; font-weight: bold; color: #333; height: 2mm; line-height: 2mm;">${letter}</span>
-            <div class="bubble" style="width: 18px; height: 18px; border: 2px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
+            <div class="bubble" style="width: 18px; height: 18px; border: 1.3px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
           </div>
         `;
       });
@@ -228,11 +179,11 @@ const generateAnswerSheet = async (finalData) => {
             <span style="font-size: 7px; font-weight: bold; min-width: 3mm;">${afirmIndex + 1}:</span>
             <div style="display: flex; flex-direction: column; align-items: center; gap: 0.3mm;">
               <span style="font-size: 6px; font-weight: bold; color: #333; height: 1.5mm;">V</span>
-              <div class="bubble" style="width: 18px; height: 18px; border: 2px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
+              <div class="bubble" style="width: 18px; height: 18px; border: 1.3px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
             </div>
             <div style="display: flex; flex-direction: column; align-items: center; gap: 0.3mm;">
               <span style="font-size: 6px; font-weight: bold; color: #333; height: 1.5mm;">F</span>
-              <div class="bubble" style="width: 18px; height: 18px; border: 2px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
+              <div class="bubble" style="width: 18px; height: 18px; border: 1.3px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;"></div>
             </div>
           </div>
         `;
@@ -245,12 +196,9 @@ const generateAnswerSheet = async (finalData) => {
   };
 
   // Criar colunas explicitamente para garantir distribuição vertical
-  // Coluna 1: 1-20, Coluna 2: 21-40, Coluna 3: 41-60 (3 columns for better space usage)
-  // Add padding-bottom to keep content away from bottom L-markers (2mm + 10mm marker + 4mm clearance = 16mm)
+  // Coluna 1: 1-15, Coluna 2: 16-30, Coluna 3: 31-45, Coluna 4: 46-60
   for (let col = 0; col < totalColumns; col++) {
-    // Add margin-top to first column for better spacing below L-markers
-    const marginTop = col === 0 ? 'margin-top: 6mm;' : '';
-    answerSheetHTML += `<div style="flex: 1; display: flex; flex-direction: column; padding-bottom: 16mm; ${marginTop}">`;
+    answerSheetHTML += `<div style="flex: 1; display: flex; flex-direction: column;">`;
 
     for (let row = 0; row < maxQuestoesPerColumn; row++) {
       const idx = (col * maxQuestoesPerColumn) + row;
