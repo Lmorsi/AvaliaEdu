@@ -17,19 +17,19 @@ from omr.models import BubbleResult, BubbleGrid
 logger = logging.getLogger(__name__)
 
 
-def _find_checkboxes(gray: np.ndarray, min_area: int = 150, max_area: int = 1000) -> list[tuple[int, int, int, int]]:
+def _find_checkboxes(gray: np.ndarray, min_area: int = 100, max_area: int = 5000) -> list[tuple[int, int, int, int]]:
     """
-    Find circular answer bubbles in a grayscale image.
+    Find rectangular checkbox regions in a grayscale image.
 
-    Returns list of (x, y, width, height) for each detected circle.
-    Optimized for 18px circles with 12px+ spacing.
+    Returns list of (x, y, width, height) for each detected checkbox.
+    Uses contour detection and rectangle approximation.
     """
     # Apply Otsu's thresholding for better separation
     _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
-    # Morphological operations to enhance circles
+    # Apply morphological operations to enhance rectangles
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    gray_processed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=1)
+    gray_processed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
 
     # Find contours
     contours, _ = cv2.findContours(gray_processed, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
@@ -42,40 +42,32 @@ def _find_checkboxes(gray: np.ndarray, min_area: int = 150, max_area: int = 1000
         if not (min_area < area < max_area):
             continue
 
+        # Approximate contour to polygon
+        epsilon = 0.03 * cv2.arcLength(contour, True)
+        approx = cv2.approxPolyDP(contour, epsilon, True)
+
+        # We want rectangles (4 vertices)
+        if len(approx) != 4:
+            continue
+
         # Get bounding rectangle
         x, y, w, h = cv2.boundingRect(contour)
 
-        # Minimum size: 12x12 pixels (18px circles are ~12-20px depending on scale)
-        if w < 12 or h < 12:
-            continue
-
-        # Check if it's roughly square-like (circles have aspect ~1)
+        # Check if it's roughly square (aspect ratio close to 1)
         aspect_ratio = float(w) / h if h > 0 else 0
-        if aspect_ratio < 0.8 or aspect_ratio > 1.2:
+        if aspect_ratio < 0.7 or aspect_ratio > 1.3:
+            logger.debug(f"Skipped: aspect_ratio={aspect_ratio:.2f} (not square-like)")
             continue
 
-        # Check circularity: STRICT (0.75+) - only accept circles
-        perimeter = cv2.arcLength(contour, True)
-        if perimeter < 1:
+        # Ensure minimum size
+        if w < 12 or h < 12:
+            logger.debug(f"Skipped: size too small ({w}x{h})")
             continue
-
-        circularity = 4 * np.pi * area / (perimeter * perimeter)
-        if circularity < 0.75:  # STRICT - only real circles pass
-            continue
-
-        # Additional filter: solidity (area / convex hull area)
-        # Circles should be solid
-        hull = cv2.convexHull(contour)
-        hull_area = cv2.contourArea(hull)
-        if hull_area > 0:
-            solidity = area / hull_area
-            if solidity < 0.75:  # Exclude if too hollow
-                continue
 
         checkboxes.append((x, y, w, h))
-        logger.info(f"Circle: x={x}, y={y}, w={w}, h={h}, aspect={aspect_ratio:.2f}, circ={circularity:.3f}, solid={solidity:.3f}, area={area:.0f}")
+        logger.info(f"Checkbox: x={x}, y={y}, w={w}, h={h}, aspect={aspect_ratio:.2f}, area={area:.0f}")
 
-    logger.info("Total circles found: %d", len(checkboxes))
+    logger.info("Total checkboxes found: %d", len(checkboxes))
     return checkboxes
 
 
@@ -104,13 +96,12 @@ def _calculate_fill_percentage(
 
 
 def _cluster_checkboxes(
-    checkboxes: list[tuple[int, int, int, int]], tolerance: int = 15
+    checkboxes: list[tuple[int, int, int, int]], tolerance: int = 30
 ) -> list[list[tuple[int, int, int, int]]]:
     """
     Group checkboxes into grid rows based on y-coordinate proximity.
 
     Checkboxes within `tolerance` pixels vertically are grouped into rows.
-    Also filters rows with too few checkboxes (noise).
     """
     if not checkboxes:
         return []
@@ -137,21 +128,17 @@ def _cluster_checkboxes(
     if len(current_row) > 0:
         rows.append(sorted(current_row, key=lambda b: b[0]))
 
-    # Filter rows: only keep rows with at least 3 checkboxes (valid answer rows)
-    # This removes noise like single detected letters
-    filtered_rows = [row for row in rows if len(row) >= 3]
+    logger.info(f"Clustered into {len(rows)} rows")
+    for i, row in enumerate(rows):
+        logger.debug(f"Row {i}: {len(row)} checkboxes, y_positions: {[b[1] for b in row]}")
 
-    logger.info(f"Clustered into {len(rows)} rows, kept {len(filtered_rows)} valid rows (min 3 checkboxes)")
-    for i, row in enumerate(filtered_rows):
-        logger.info(f"Row {i}: {len(row)} checkboxes at y={row[0][1]}, x_positions: {[b[0] for b in row]}")
-
-    return filtered_rows
+    return rows
 
 
 def detect_bubbles(
     image: np.ndarray,
-    fill_threshold: int = 150,
-    marked_percentage: float = 0.25,
+    fill_threshold: int = 130,
+    marked_percentage: float = 0.35,
 ) -> BubbleResult:
     """
     Detect and classify checkboxes as marked or unmarked.
