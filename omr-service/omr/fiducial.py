@@ -1,15 +1,14 @@
 """
-Fiducial marker detection using rectangular border detection.
+Fiducial marker detection using bubble grid detection.
 
-Instead of relying on L-shaped markers (which are fragile to scan variations),
-this approach detects the rectangular border/outline of the answer sheet itself.
-The detected rectangle corners become the fiducial points for perspective correction.
-
-This is more robust because:
-  - The sheet border is always present and clearly defined
+This approach detects the actual answer bubble circles in the image,
+then uses their bounding box to determine the fiducial corner points.
+This is more robust than detecting physical markers because:
+  - Bubbles are always present and consistently placed
   - Works regardless of printing quality or marker artifacts
-  - Handles severe perspective distortion automatically
-  - Falls back to image edges if no clear border is found
+  - Automatically finds the actual content area (not page borders)
+  - Handles severe perspective distortion better
+  - Falls back to edge detection if bubble detection fails
 """
 
 import logging
@@ -21,6 +20,92 @@ import numpy as np
 from omr.models import FiducialResult
 
 logger = logging.getLogger(__name__)
+
+
+def _detect_bubble_grid_region(image: np.ndarray) -> Optional[list[tuple[float, float]]]:
+    """
+    Detect the answer bubble grid region by finding circular shapes (bubbles).
+    Uses the bounding box of all detected bubbles to determine fiducial corners.
+
+    Returns 4 corner points [TL, TR, BR, BL] based on bubble locations, or None if fails.
+    """
+    h, w = image.shape[:2]
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    # Apply Otsu's thresholding to separate dark bubbles from background
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    # Morphological operations to enhance circles
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    processed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=1)
+
+    # Find contours
+    contours, _ = cv2.findContours(processed, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+    logger.info("Bubble detection: found %d contours", len(contours))
+
+    # Find circles (bubbles)
+    bubble_boxes = []
+    for contour in contours:
+        area = cv2.contourArea(contour)
+
+        # Bubble area range (optimized for typical bubble size)
+        if not (100 < area < 2000):
+            continue
+
+        x, y, bw, bh = cv2.boundingRect(contour)
+
+        # Bubbles should be roughly square
+        aspect_ratio = float(bw) / bh if bh > 0 else 0
+        if aspect_ratio < 0.7 or aspect_ratio > 1.3:
+            continue
+
+        # Check circularity (4π*area / perimeter²)
+        perimeter = cv2.arcLength(contour, True)
+        if perimeter < 1:
+            continue
+        circularity = 4 * np.pi * area / (perimeter * perimeter)
+        if circularity < 0.70:
+            continue
+
+        bubble_boxes.append((x, y, bw, bh))
+        logger.debug("Bubble: x=%d, y=%d, w=%d, h=%d, area=%.0f, circ=%.3f", x, y, bw, bh, area, circularity)
+
+    logger.info("Bubble detection: found %d valid bubbles", len(bubble_boxes))
+
+    if len(bubble_boxes) < 4:
+        logger.warning("Too few bubbles detected (%d < 4)", len(bubble_boxes))
+        return None
+
+    # Get bounding box of all bubbles
+    all_x = [b[0] for b in bubble_boxes]
+    all_y = [b[1] for b in bubble_boxes]
+    all_x2 = [b[0] + b[2] for b in bubble_boxes]
+    all_y2 = [b[1] + b[3] for b in bubble_boxes]
+
+    min_x = min(all_x)
+    min_y = min(all_y)
+    max_x = max(all_x2)
+    max_y = max(all_y2)
+
+    logger.info("Bubble grid bounding box: (%d,%d) to (%d,%d)", min_x, min_y, max_x, max_y)
+
+    # Add margins around bubble grid (10% padding) to include edges
+    margin_x = int((max_x - min_x) * 0.10)
+    margin_y = int((max_y - min_y) * 0.10)
+
+    corners = [
+        (float(min_x - margin_x), float(min_y - margin_y)),  # TL
+        (float(max_x + margin_x), float(min_y - margin_y)),  # TR
+        (float(max_x + margin_x), float(max_y + margin_y)),  # BR
+        (float(min_x - margin_x), float(max_y + margin_y)),  # BL
+    ]
+
+    logger.info("Bubble-based fiducials: TL=(%.0f,%.0f) | TR=(%.0f,%.0f) | BR=(%.0f,%.0f) | BL=(%.0f,%.0f)",
+                corners[0][0], corners[0][1], corners[1][0], corners[1][1],
+                corners[2][0], corners[2][1], corners[3][0], corners[3][1])
+
+    return corners
 
 
 def _detect_rectangle_border(image: np.ndarray) -> Optional[list[tuple[float, float]]]:
@@ -229,10 +314,12 @@ def _validate_rectangle_corners(
 
 def detect_fiducials(image: np.ndarray) -> FiducialResult:
     """
-    Detect the rectangular border of the answer sheet for perspective correction.
+    Detect fiducial points for perspective correction.
 
-    Uses Canny edge detection + contour analysis to find the sheet outline.
-    Falls back to image edges if detection fails.
+    Strategy (in order of preference):
+    1. Detect answer bubbles - most reliable (bubbles are always present)
+    2. Detect rectangle border - fallback
+    3. Use image edges - final fallback
 
     The image is resized to width=900 for stable detection, then coordinates
     are scaled back to the original image dimensions.
@@ -245,22 +332,38 @@ def detect_fiducials(image: np.ndarray) -> FiducialResult:
     scale_x = original_w / 900
     scale_y = original_h / new_h
 
-    # Try to detect rectangle border
-    corners_resized = _detect_rectangle_border(resized)
+    corners_resized = None
+    detection_method = None
 
-    # Validate detected corners - if they don't form a valid rectangle, reject
+    # Strategy 1: Try bubble detection (most reliable)
+    logger.info("Attempting bubble-based fiducial detection...")
+    corners_resized = _detect_bubble_grid_region(resized)
     if corners_resized is not None:
         corners_resized = _validate_rectangle_corners(corners_resized, 900, new_h)
+        if corners_resized is not None:
+            detection_method = "BUBBLES"
+            logger.info("✓ Bubble-based detection succeeded")
 
+    # Strategy 2: Try rectangle border detection (if bubbles failed)
     if corners_resized is None:
-        logger.error("Rectangle border detection failed, falling back to image edges")
-        # Fallback: use image edges as safe default
+        logger.info("Attempting rectangle border detection...")
+        corners_resized = _detect_rectangle_border(resized)
+        if corners_resized is not None:
+            corners_resized = _validate_rectangle_corners(corners_resized, 900, new_h)
+            if corners_resized is not None:
+                detection_method = "RECTANGLE"
+                logger.info("✓ Rectangle border detection succeeded")
+
+    # Strategy 3: Fall back to image edges
+    if corners_resized is None:
+        logger.warning("All detection methods failed, using image edges")
         corners_resized = [
             (0, 0),
             (900, 0),
             (900, new_h),
             (0, new_h),
         ]
+        detection_method = "EDGES"
 
     # Scale corners back to original image size
     corners = [
@@ -268,7 +371,7 @@ def detect_fiducials(image: np.ndarray) -> FiducialResult:
         for x, y in corners_resized
     ]
 
-    logger.info("Final corners (TL,TR,BR,BL): %s", corners)
+    logger.info("Final corners via %s (TL,TR,BR,BL): %s", detection_method, corners)
 
     return FiducialResult(found=True, count=4, corners=corners)
 
