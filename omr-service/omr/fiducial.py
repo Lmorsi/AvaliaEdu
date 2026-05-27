@@ -1,26 +1,33 @@
 """
-ArUco marker detection for robust fiducial point identification.
+ArUco marker detection with Harris Corner Detection fallback.
 
-This module detects ArUco markers (DICT_4X4_50) placed at the corners
-of the answer sheet. ArUco markers provide superior detection reliability
-compared to simple geometric shapes.
+This module provides robust fiducial point identification using:
+  1. ArUco markers (DICT_4X4_50) with IDs 0-3 for each corner
+  2. Harris Corner Detection as a fallback for challenging conditions
+  3. Multiple edge-based detection strategies
 
-Detection strategy:
-  1. ArUco detection using OpenCV's aruco module
-  2. Identify marker IDs and orientations
-  3. Extract corner points for each marker
-  4. Map IDs to positions (TL=0, TR=1, BL=2, BR=3)
-  5. Fallback to edge detection if ArUco detection fails
+Detection strategy (cascading):
+  1. ArUco detection (primary)
+     - Enhanced with CLAHE preprocessing
+     - Optimized corner refinement
+  2. Harris Corner Detection (fallback)
+     - Detects strong corners in each ROI
+     - Robust to illumination variations
+  3. Edge detection (fallback)
+     - Detects content area boundary
+  4. Rectangle border detection (fallback)
+     - Finds largest quadrilateral
+  5. Image edges (final fallback)
 
-Benefits of ArUco markers:
-  - Unique IDs enable automatic corner identification
-  - Robust detection under various lighting conditions
-  - Correct identification even at different angles
-  - Built-in error correction and validation
+Benefits:
+  - ArUco provides ID-based corner identification
+  - Harris provides robustness when ArUco fails
+  - Multiple fallbacks ensure high success rate
+  - Adaptive to different document quality
 """
 
 import logging
-from typing import Optional
+from typing import Optional, Tuple
 
 import cv2
 import numpy as np
@@ -39,6 +46,85 @@ ARUCO_ID_TO_POSITION = {
 }
 
 
+def _detect_harris_corners_at_roi(image: np.ndarray, roi_position: str) -> Optional[Tuple[float, float]]:
+    """
+    Detecta cantos usando Harris Corner Detection em uma ROI específica.
+
+    Args:
+        image: Imagem BGR
+        roi_position: "TL", "TR", "BL", "BR"
+
+    Returns:
+        Coordenadas (x, y) do canto detectado ou None
+    """
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    h, w = gray.shape
+
+    # Define ROI (1/10 da imagem em cada canto)
+    margin = min(w, h) // 10
+
+    if roi_position == "TL":
+        roi = gray[0:margin, 0:margin]
+        roi_x, roi_y = 0, 0
+        corner_selector = lambda corners: np.argmin(corners[:, 0] + corners[:, 1])  # Mínimo x+y
+    elif roi_position == "TR":
+        roi = gray[0:margin, w-margin:w]
+        roi_x, roi_y = w - margin, 0
+        corner_selector = lambda corners: np.argmin(-corners[:, 0] + corners[:, 1])  # Máximo x, mínimo y
+    elif roi_position == "BR":
+        roi = gray[h-margin:h, w-margin:w]
+        roi_x, roi_y = w - margin, h - margin
+        corner_selector = lambda corners: np.argmax(corners[:, 0] + corners[:, 1])  # Máximo x+y
+    else:  # BL
+        roi = gray[h-margin:h, 0:margin]
+        roi_x, roi_y = 0, h - margin
+        corner_selector = lambda corners: np.argmax(-corners[:, 0] + corners[:, 1])  # Mínimo x, máximo y
+
+    roi_h, roi_w = roi.shape
+
+    # Pré-processamento
+    if roi_h < 5 or roi_w < 5:
+        return None
+
+    # Binarização adaptativa para melhorar contraste
+    if roi_h > 11 and roi_w > 11:
+        blurred = cv2.GaussianBlur(roi, (5, 5), 1.0)
+        binary = cv2.adaptiveThreshold(
+            blurred, 255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY,
+            blockSize=11, C=2
+        )
+    else:
+        binary = roi
+
+    # Harris Corner Detection
+    harris_response = cv2.cornerHarris(binary, blockSize=2, ksize=3, k=0.04)
+
+    # Encontrar cantos fortes
+    corners_list = np.where(harris_response > 0.01 * harris_response.max())
+
+    if len(corners_list[0]) < 1:
+        logger.debug(f"Nenhum canto Harris detectado em {roi_position}")
+        return None
+
+    # Combinar coordenadas y, x
+    corners = np.column_stack((corners_list[1], corners_list[0]))  # (x, y)
+
+    # Selecionar canto mais apropriado
+    try:
+        selected_idx = corner_selector(corners)
+        corner = corners[selected_idx]
+        global_x = float(roi_x + corner[0])
+        global_y = float(roi_y + corner[1])
+
+        logger.info(f"Harris corner {roi_position}: ({global_x:.1f}, {global_y:.1f})")
+        return (global_x, global_y)
+    except Exception as e:
+        logger.debug(f"Erro ao selecionar canto Harris em {roi_position}: {e}")
+        return None
+
+
 def _detect_aruco_markers(image: np.ndarray) -> Optional[dict]:
     """
     Detecta marcadores ArUco na imagem e retorna suas posições.
@@ -50,11 +136,13 @@ def _detect_aruco_markers(image: np.ndarray) -> Optional[dict]:
         # Carregar dicionário ArUco (DICT_4X4_50)
         aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
 
-        # Parâmetros de detecção
+        # Parâmetros de detecção otimizados
         parameters = cv2.aruco.DetectorParameters()
         parameters.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
         parameters.cornerRefinementMinAccuracy = 0.1
         parameters.cornerRefinementMaxIterations = 50
+        parameters.adaptiveThreshConstantSubtracted = 7
+        parameters.adaptiveThreshWinSizeStep = 16
 
         # Criar detector
         detector = cv2.aruco.ArucoDetector(aruco_dict, parameters)
@@ -62,8 +150,17 @@ def _detect_aruco_markers(image: np.ndarray) -> Optional[dict]:
         # Converter para escala de cinza
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-        # Detectar marcadores
-        corners, ids, rejected = detector.detectMarkers(gray)
+        # Pré-processamento para melhorar detecção
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(blurred)
+
+        # Detectar marcadores na imagem pré-processada
+        corners, ids, rejected = detector.detectMarkers(enhanced)
+
+        if ids is None or len(ids) == 0:
+            logger.warning("Nenhum marcador ArUco detectado com pré-processamento, tentando sem...")
+            corners, ids, rejected = detector.detectMarkers(gray)
 
         if ids is None or len(ids) == 0:
             logger.warning("Nenhum marcador ArUco detectado")
@@ -87,11 +184,40 @@ def _detect_aruco_markers(image: np.ndarray) -> Optional[dict]:
 
             logger.info(f"ArUco ID {marker_id}: centro em ({center_x:.1f}, {center_y:.1f})")
 
-        return marker_positions
+        return marker_positions if len(marker_positions) == 4 else None
 
     except Exception as e:
         logger.error(f"Erro na detecção ArUco: {e}")
         return None
+
+
+def _detect_harris_markers(image: np.ndarray) -> Optional[dict]:
+    """
+    Detecta marcadores usando Harris Corner Detection como fallback para ArUco.
+
+    Retorna dict com IDs 0-3 mapeados para posições TL, TR, BR, BL.
+    """
+    logger.info("Usando Harris Corner Detection como fallback...")
+
+    positions = {}
+    roi_map = {
+        0: "TL",  # ID 0 = Top-Left
+        1: "TR",  # ID 1 = Top-Right
+        3: "BR",  # ID 3 = Bottom-Right
+        2: "BL"   # ID 2 = Bottom-Left
+    }
+
+    for marker_id, roi_name in roi_map.items():
+        corner = _detect_harris_corners_at_roi(image, roi_name)
+        if corner is not None:
+            positions[marker_id] = corner
+            logger.info(f"Harris detector marcador ID {marker_id} ({roi_name}): {corner}")
+
+    if len(positions) == 4:
+        return positions
+
+    logger.warning(f"Harris detection: apenas {len(positions)}/4 marcadores detectados")
+    return None if len(positions) < 4 else positions
 
 
 def _build_corners_from_aruco(marker_positions: dict, img_w: int, img_h: int) -> Optional[list]:
@@ -417,9 +543,10 @@ def detect_fiducials(image: np.ndarray) -> FiducialResult:
 
     Strategy (in order of preference):
     1. ArUco marker detection (primary) - most accurate and reliable
-    2. Content area detection (edge-based) - fallback
-    3. Detect rectangle border - fallback
-    4. Use image edges - final fallback
+    2. Harris Corner Detection (fallback) - robust to lighting variations
+    3. Content area detection (edge-based) - fallback
+    4. Detect rectangle border - fallback
+    5. Use image edges - final fallback
 
     The image is resized to width=900 for stable detection, then coordinates
     are scaled back to the original image dimensions.
@@ -444,7 +571,17 @@ def detect_fiducials(image: np.ndarray) -> FiducialResult:
             detection_method = "ARUCO"
             logger.info("✓ ArUco marker detection succeeded")
 
-    # Strategy 2: Try content area detection (edge-based)
+    # Strategy 2: Try Harris Corner Detection (fallback)
+    if corners_resized is None:
+        logger.info("Attempting Harris Corner Detection...")
+        marker_positions = _detect_harris_markers(resized)
+        if marker_positions is not None and len(marker_positions) >= 4:
+            corners_resized = _build_corners_from_aruco(marker_positions, 900, new_h)
+            if corners_resized is not None:
+                detection_method = "HARRIS"
+                logger.info("✓ Harris Corner Detection succeeded")
+
+    # Strategy 3: Try content area detection (edge-based)
     if corners_resized is None:
         logger.info("Attempting content area edge detection...")
         corners_resized = _detect_content_area_via_edges(resized)
@@ -454,7 +591,7 @@ def detect_fiducials(image: np.ndarray) -> FiducialResult:
                 detection_method = "EDGES"
                 logger.info("✓ Content area edge detection succeeded")
 
-    # Strategy 3: Try rectangle border detection (fallback)
+    # Strategy 4: Try rectangle border detection (fallback)
     if corners_resized is None:
         logger.info("Attempting rectangle border detection...")
         corners_resized = _detect_rectangle_border(resized)
@@ -464,7 +601,7 @@ def detect_fiducials(image: np.ndarray) -> FiducialResult:
                 detection_method = "RECTANGLE"
                 logger.info("✓ Rectangle border detection succeeded")
 
-    # Strategy 4: Fall back to image edges
+    # Strategy 5: Fall back to image edges
     if corners_resized is None:
         logger.warning("All detection methods failed, using image edges")
         corners_resized = [
