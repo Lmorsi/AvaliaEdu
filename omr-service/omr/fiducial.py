@@ -484,8 +484,6 @@ def detect_fiducials(image: np.ndarray) -> FiducialResult:
     logger.info("Final corners via %s (TL,TR,BR,BL): %s", detection_method, corners)
 
     return FiducialResult(found=True, count=4, corners=corners)
-        for x, y in corners_resized
-    ]
 
     logger.info("Final corners via %s (TL,TR,BR,BL): %s", detection_method, corners)
 
