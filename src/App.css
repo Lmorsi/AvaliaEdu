@@ -1,0 +1,11 @@
+.app {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  padding: 2rem 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .app {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  }
+}

@@ -85,23 +85,12 @@ const PrivacyPolicyPage: React.FC = () => {
         .privacidade-item {
           margin-bottom: 1.5rem;
           padding-left: 1.5rem;
-          position: relative;
+          border-left: 3px solid var(--cinza-claro);
+          transition: border-color 0.3s;
         }
 
-        .privacidade-item::before {
-          content: '';
-          position: absolute;
-          left: 0;
-          top: 4px;
-          width: 8px;
-          height: 8px;
-          background-color: var(--cinza-claro);
-          border-radius: 2px;
-          transition: background-color 0.3s;
-        }
-
-        .privacidade-item:hover::before {
-          background-color: var(--azul-primario);
+        .privacidade-item:hover {
+          border-left-color: var(--azul-primario);
         }
 
         .privacidade-item h3 {
@@ -124,19 +113,7 @@ const PrivacyPolicyPage: React.FC = () => {
           border-radius: var(--radius);
           padding: 1rem 1.5rem;
           margin: 1rem 0;
-          position: relative;
-          padding-left: 1.5rem;
-        }
-
-        .data-card::before {
-          content: '';
-          position: absolute;
-          left: 0;
-          top: 0;
-          bottom: 0;
-          width: 8px;
-          background-color: var(--azul-primario);
-          border-radius: var(--radius) 0 0 var(--radius);
+          border-left: 4px solid var(--azul-primario);
         }
 
         .data-card h4 {
@@ -155,26 +132,11 @@ const PrivacyPolicyPage: React.FC = () => {
           border-radius: var(--radius);
           padding: 1rem 1.5rem;
           margin: 1rem 0;
-          position: relative;
-          padding-left: 1.5rem;
-        }
-
-        .info-card::before {
-          content: '';
-          position: absolute;
-          left: 0;
-          top: 0;
-          bottom: 0;
-          width: 8px;
-          background-color: var(--azul-primario);
-          border-radius: var(--radius) 0 0 var(--radius);
-        }
-
-        .info-card.warning::before {
-          background-color: var(--amarelo);
+          border-left: 4px solid var(--azul-primario);
         }
 
         .info-card.warning {
+          border-left-color: var(--amarelo);
           background-color: #fff8e1;
         }
 
@@ -183,19 +145,7 @@ const PrivacyPolicyPage: React.FC = () => {
           border-radius: var(--radius);
           padding: 1.5rem;
           margin: 1.5rem 0;
-          position: relative;
-          padding-left: 2rem;
-        }
-
-        .contact-card::before {
-          content: '';
-          position: absolute;
-          left: 0;
-          top: 0;
-          bottom: 0;
-          width: 8px;
-          background-color: var(--verde);
-          border-radius: var(--radius) 0 0 var(--radius);
+          border-left: 4px solid var(--verde);
         }
 
         ul {
@@ -272,12 +222,7 @@ const PrivacyPolicyPage: React.FC = () => {
           }
 
           .privacidade-item {
-            padding-left: 1.5rem;
-          }
-
-          .privacidade-item::before {
-            width: 6px;
-            height: 6px;
+            padding-left: 1rem;
           }
         }
       `}</style>

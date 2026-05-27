@@ -82,23 +82,12 @@ const TermsPage: React.FC = () => {
         .termo-item {
           margin-bottom: 1.5rem;
           padding-left: 1.5rem;
-          position: relative;
+          border-left: 3px solid var(--cinza-claro);
+          transition: border-color 0.3s;
         }
 
-        .termo-item::before {
-          content: '';
-          position: absolute;
-          left: 0;
-          top: 4px;
-          width: 8px;
-          height: 8px;
-          background-color: var(--cinza-claro);
-          border-radius: 2px;
-          transition: background-color 0.3s;
-        }
-
-        .termo-item:hover::before {
-          background-color: var(--azul-primario);
+        .termo-item:hover {
+          border-left-color: var(--azul-primario);
         }
 
         .termo-item h3 {
@@ -132,42 +121,18 @@ const TermsPage: React.FC = () => {
 
         .alert-box {
           background-color: #fff8e1;
+          border-left: 4px solid #ffc107;
           padding: 1rem 1.5rem;
           margin: 1.5rem 0;
-          border-radius: var(--radius);
-          position: relative;
-          padding-left: 1.75rem;
-        }
-
-        .alert-box::before {
-          content: '';
-          position: absolute;
-          left: 0;
-          top: 0;
-          bottom: 0;
-          width: 8px;
-          background-color: #ffc107;
-          border-radius: var(--radius) 0 0 var(--radius);
+          border-radius: 0 var(--radius) var(--radius) 0;
         }
 
         .acceptance-box {
           background-color: #e8f5e9;
+          border-left: 4px solid #4caf50;
           padding: 1.5rem;
           margin-top: 2rem;
-          border-radius: var(--radius);
-          position: relative;
-          padding-left: 2rem;
-        }
-
-        .acceptance-box::before {
-          content: '';
-          position: absolute;
-          left: 0;
-          top: 0;
-          bottom: 0;
-          width: 8px;
-          background-color: #4caf50;
-          border-radius: var(--radius) 0 0 var(--radius);
+          border-radius: 0 var(--radius) var(--radius) 0;
         }
 
         ul {
@@ -214,12 +179,7 @@ const TermsPage: React.FC = () => {
           }
 
           .termo-item {
-            padding-left: 1.5rem;
-          }
-
-          .termo-item::before {
-            width: 6px;
-            height: 6px;
+            padding-left: 1rem;
           }
         }
       `}</style>
