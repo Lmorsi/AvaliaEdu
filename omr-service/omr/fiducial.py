@@ -124,7 +124,7 @@ def _build_corners_from_aruco(marker_positions: dict, img_w: int, img_h: int) ->
     return corners
 
 
-
+def _detect_content_area_via_edges(image: np.ndarray) -> Optional[list[tuple[float, float]]]:
     """
     Detect the main content area of the answer sheet using edge detection + line detection.
     More robust than bubble detection because it works on ANY scanned document,
@@ -480,10 +480,6 @@ def detect_fiducials(image: np.ndarray) -> FiducialResult:
         [float(x * scale_x), float(y * scale_y)]
         for x, y in corners_resized
     ]
-
-    logger.info("Final corners via %s (TL,TR,BR,BL): %s", detection_method, corners)
-
-    return FiducialResult(found=True, count=4, corners=corners)
 
     logger.info("Final corners via %s (TL,TR,BR,BL): %s", detection_method, corners)
 
