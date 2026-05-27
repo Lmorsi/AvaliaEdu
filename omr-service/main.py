@@ -12,11 +12,126 @@ from fastapi.middleware.cors import CORSMiddleware
 from omr.fiducial import detect_fiducials, draw_fiducials
 from omr.perspective import correct_perspective
 from omr.qr_reader import read_qr
-from omr.models import ScanResponse, ScanErrorResponse, BubbleResult, BubbleGrid
+from omr.models import ScanResponse, ScanErrorResponse, BubbleResult, BubbleGrid, FiducialResult
 
 # Configuração de logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+# --- Detecção de Marcadores L (fiduciais físicos) ---
+
+
+def _find_l_marker(image: np.ndarray, target_corner: str) -> Optional[Tuple[float, float]]:
+    """
+    Detecta um marcador L em um canto específico da imagem.
+    target_corner: "TL", "TR", "BR", "BL"
+
+    Retorna as coordenadas do canto do L ou None se não encontrado.
+    """
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    h, w = gray.shape
+
+    # Definir ROI baseado no canto
+    margin = min(w, h) // 8  # Buscar L em 1/8 do tamanho
+
+    if target_corner == "TL":
+        roi = gray[0:margin, 0:margin]
+        roi_x, roi_y = 0, 0
+    elif target_corner == "TR":
+        roi = gray[0:margin, w-margin:w]
+        roi_x, roi_y = w - margin, 0
+    elif target_corner == "BR":
+        roi = gray[h-margin:h, w-margin:w]
+        roi_x, roi_y = w - margin, h - margin
+    else:  # BL
+        roi = gray[h-margin:h, 0:margin]
+        roi_x, roi_y = 0, h - margin
+
+    # Aplicar edge detection no ROI
+    edges = cv2.Canny(roi, 50, 150)
+
+    # Encontrar linhas usando HoughLinesP
+    lines = cv2.HoughLinesP(edges, 1, np.pi/180, 20, minLineLength=20, maxLineGap=10)
+
+    if lines is None or len(lines) < 2:
+        logger.debug(f"L-marker {target_corner}: nenhuma linha detectada")
+        return None
+
+    # Procurar pela linha horizontal e vertical que formam um L
+    horizontal_lines = []
+    vertical_lines = []
+
+    for line in lines:
+        x1, y1, x2, y2 = line[0]
+        dx = abs(x2 - x1)
+        dy = abs(y2 - y1)
+
+        # Se é mais horizontal que vertical
+        if dx > dy:
+            horizontal_lines.append((y1, x1, x2))
+        # Se é mais vertical que horizontal
+        elif dy > dx:
+            vertical_lines.append((x1, y1, y2))
+
+    if not horizontal_lines or not vertical_lines:
+        logger.debug(f"L-marker {target_corner}: não encontrou H/V lines")
+        return None
+
+    # Pegar a linha mais próxima da borda para cada direção
+    if target_corner == "TL":
+        h_line = min(horizontal_lines, key=lambda l: l[0])  # Linha com menor Y
+        v_line = min(vertical_lines, key=lambda l: l[0])    # Linha com menor X
+    elif target_corner == "TR":
+        h_line = min(horizontal_lines, key=lambda l: l[0])
+        v_line = max(vertical_lines, key=lambda l: l[0])    # Linha com maior X
+    elif target_corner == "BR":
+        h_line = max(horizontal_lines, key=lambda l: l[0])  # Linha com maior Y
+        v_line = max(vertical_lines, key=lambda l: l[0])
+    else:  # BL
+        h_line = max(horizontal_lines, key=lambda l: l[0])
+        v_line = min(vertical_lines, key=lambda l: l[0])
+
+    # Estimar o ponto de intersecção do L
+    h_y = h_line[0]
+    v_x = v_line[0]
+
+    # Converter para coordenadas globais
+    corner_x = float(roi_x + v_x)
+    corner_y = float(roi_y + h_y)
+
+    logger.info(f"L-marker {target_corner} detectado em ({corner_x:.1f}, {corner_y:.1f})")
+    return (corner_x, corner_y)
+
+
+def detect_l_markers(image: np.ndarray) -> FiducialResult:
+    """
+    Detecta todos os 4 marcadores L nos cantos da imagem.
+    Retorna FiducialResult com os 4 cantos [TL, TR, BR, BL].
+    """
+    corners = []
+    found_count = 0
+
+    for corner_name in ["TL", "TR", "BR", "BL"]:
+        corner = _find_l_marker(image, corner_name)
+        if corner is not None:
+            corners.append(corner)
+            found_count += 1
+        else:
+            # Fallback: usar a borda da imagem
+            h, w = image.shape[:2]
+            if corner_name == "TL":
+                corners.append((0.0, 0.0))
+            elif corner_name == "TR":
+                corners.append((float(w), 0.0))
+            elif corner_name == "BR":
+                corners.append((float(w), float(h)))
+            else:  # BL
+                corners.append((0.0, float(h)))
+
+    logger.info(f"L-markers detectados: {found_count}/4")
+
+    return FiducialResult(found=found_count > 0, count=4, corners=corners)
 
 
 # --- Bubble detection ---
@@ -222,16 +337,16 @@ app.add_middleware(
 @app.post("/api/omr/scan", response_model=ScanResponse, responses={400: {"model": ScanErrorResponse}})
 async def scan_omr_sheet(photo: UploadFile = File(...), debug: bool = False):
     """
-    Full OMR scan pipeline:
-      1. Read image
-      2. Detect L-shaped fiducial markers on the sides
-      3. Correct perspective using detected markers
-      4. Read QR code (from original or corrected image)
-      5. Detect and classify answer bubbles
-      6. Return structured results + optional debug images
+    Pipeline completo de scan OMR:
+      1. Ler imagem
+      2. Detectar marcadores L nos 4 cantos (se possível)
+      3. Corrigir perspectiva usando marcadores L detectados
+      4. Ler QR code
+      5. Detectar e classificar bolhas de resposta
+      6. Retornar resultados + imagens de debug (se solicitado)
     """
     try:
-        # 1. Read image
+        # 1. Ler imagem
         contents = await photo.read()
         nparr = np.frombuffer(contents, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -239,39 +354,52 @@ async def scan_omr_sheet(photo: UploadFile = File(...), debug: bool = False):
         if image is None:
             raise HTTPException(status_code=400, detail="Não foi possível decodificar a imagem.")
 
-        # 2. Detect L-shaped fiducial markers
-        fiducial_result = detect_fiducials(image)
-        logger.info("Fiducial detection: found=%s, count=%d", fiducial_result.found, fiducial_result.count)
+        original_h, original_w = image.shape[:2]
+        logger.info(f"Imagem recebida: {original_w}x{original_h}")
 
-        # 3. Perspective correction using L-markers
+        # 2. Detectar marcadores L nos 4 cantos
+        logger.info("Detectando marcadores L nos cantos...")
+        fiducial_result = detect_l_markers(image)
+        logger.info("Marcadores L: encontrados=%s, count=%d", fiducial_result.found, fiducial_result.count)
+
+        # 3. Corrigir perspectiva
+        corrected_image = image.copy()
         if fiducial_result.found and fiducial_result.corners:
-            corrected_image = correct_perspective(
-                image,
-                fiducial_result.corners,
-                target_width=1240,
-                target_height=1754,
-            )
-            if corrected_image is None:
-                logger.warning("Perspective correction failed, using resized original")
-                h, w = image.shape[:2]
-                scale = 1240 / w
-                corrected_image = cv2.resize(image, (1240, int(h * scale)))
+            try:
+                corrected_image = correct_perspective(
+                    image,
+                    fiducial_result.corners,
+                    target_width=1240,
+                    target_height=1754,
+                )
+                if corrected_image is not None:
+                    logger.info("Perspectiva corrigida com sucesso")
+                else:
+                    logger.warning("correct_perspective retornou None, usando imagem original redimensionada")
+                    scale = 1240 / original_w
+                    corrected_image = cv2.resize(image, (1240, int(original_h * scale)))
+            except Exception as e:
+                logger.error(f"Erro na correção de perspectiva: {e}")
+                scale = 1240 / original_w
+                corrected_image = cv2.resize(image, (1240, int(original_h * scale)))
         else:
-            # No fiducials found — resize as fallback
-            logger.warning("No fiducial markers found, resizing without perspective correction")
-            h, w = image.shape[:2]
-            scale = 1240 / w
-            corrected_image = cv2.resize(image, (1240, int(h * scale)))
+            # Sem marcadores L - apenas redimensionar
+            logger.warning("Marcadores L não detectados, redimensionando sem correção de perspectiva")
+            scale = 1240 / original_w
+            corrected_image = cv2.resize(image, (1240, int(original_h * scale)))
 
-        # 4. Read QR code (try corrected first, then original)
+        # 4. Ler QR code (tentar na imagem corrigida primeiro)
         qr_data = read_qr(corrected_image)
         if qr_data is None:
+            logger.info("QR code não encontrado na imagem corrigida, tentando original")
             qr_data = read_qr(image)
 
-        # 5. Detect answer bubbles on corrected image
+        # 5. Detectar bolhas de resposta na imagem corrigida
+        logger.info("Detectando bolhas de resposta...")
         bubble_result = detect_bubbles(corrected_image)
+        logger.info(f"Bolhas encontradas: {len(bubble_result.grids)} linhas")
 
-        # 6. Build response
+        # 6. Montar resposta
         response = ScanResponse(
             success=True,
             qr=qr_data,
@@ -280,7 +408,7 @@ async def scan_omr_sheet(photo: UploadFile = File(...), debug: bool = False):
         )
 
         if debug:
-            # Annotate corrected image with bubbles + fiducials
+            # Anotar imagem corrigida com bolhas + marcadores
             annotated = draw_bubbles(corrected_image, bubble_result)
             annotated = draw_fiducials(annotated, fiducial_result)
 
@@ -290,13 +418,14 @@ async def scan_omr_sheet(photo: UploadFile = File(...), debug: bool = False):
             _, corrected_buf = cv2.imencode('.png', corrected_image)
             response.corrected_image = base64.b64encode(corrected_buf).decode('utf-8')
 
+        logger.info("Scan completado com sucesso")
         return response
 
     except HTTPException as e:
-        logger.error("HTTP Exception: %s", e.detail)
+        logger.error(f"HTTP Exception: {e.detail}")
         return JSONResponse(status_code=e.status_code, content=ScanErrorResponse(error=e.detail).dict())
     except Exception as e:
-        logger.error("Erro inesperado: %s", str(e), exc_info=True)
+        logger.error(f"Erro inesperado: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erro interno: {e}")
 
 
