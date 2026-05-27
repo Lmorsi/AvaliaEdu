@@ -1,19 +1,22 @@
 """
-Fiducial marker detection for square markers.
+ArUco marker detection for robust fiducial point identification.
 
-This approach detects solid square fiducial markers placed at the corners
-of the answer sheet. These markers are used for perspective correction.
+This module detects ArUco markers (DICT_4X4_50) placed at the corners
+of the answer sheet. ArUco markers provide superior detection reliability
+compared to simple geometric shapes.
 
 Detection strategy:
-  1. Edge detection to find content boundaries
-  2. Rectangle/contour detection to identify marker regions
-  3. Corner extraction for perspective transformation
-  4. Multiple fallback strategies for robustness
+  1. ArUco detection using OpenCV's aruco module
+  2. Identify marker IDs and orientations
+  3. Extract corner points for each marker
+  4. Map IDs to positions (TL=0, TR=1, BL=2, BR=3)
+  5. Fallback to edge detection if ArUco detection fails
 
-Benefits of solid square markers:
-  - Simple geometry, easier to detect reliably
-  - Consistent size and shape across all 4 corners
-  - Robust against partial occlusion or printing quality issues
+Benefits of ArUco markers:
+  - Unique IDs enable automatic corner identification
+  - Robust detection under various lighting conditions
+  - Correct identification even at different angles
+  - Built-in error correction and validation
 """
 
 import logging
@@ -26,8 +29,102 @@ from omr.models import FiducialResult
 
 logger = logging.getLogger(__name__)
 
+# Mapeamento de IDs ArUco para posições
+# IDs correspondem aos marcadores gerados no PDF
+ARUCO_ID_TO_POSITION = {
+    0: 'TL',  # Top-Left
+    1: 'TR',  # Top-Right
+    2: 'BL',  # Bottom-Left
+    3: 'BR'   # Bottom-Right
+}
 
-def _detect_content_area_via_edges(image: np.ndarray) -> Optional[list[tuple[float, float]]]:
+
+def _detect_aruco_markers(image: np.ndarray) -> Optional[dict]:
+    """
+    Detecta marcadores ArUco na imagem e retorna suas posições.
+
+    Returns dict com IDs como chaves e corner points como valores.
+    Exemplo: {0: (x, y), 1: (x, y), 2: (x, y), 3: (x, y)}
+    """
+    try:
+        # Carregar dicionário ArUco (DICT_4X4_50)
+        aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+
+        # Parâmetros de detecção
+        parameters = cv2.aruco.DetectorParameters()
+        parameters.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+        parameters.cornerRefinementMinAccuracy = 0.1
+        parameters.cornerRefinementMaxIterations = 50
+
+        # Criar detector
+        detector = cv2.aruco.ArucoDetector(aruco_dict, parameters)
+
+        # Converter para escala de cinza
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+        # Detectar marcadores
+        corners, ids, rejected = detector.detectMarkers(gray)
+
+        if ids is None or len(ids) == 0:
+            logger.warning("Nenhum marcador ArUco detectado")
+            return None
+
+        logger.info("Detectados %d marcadores ArUco", len(ids))
+
+        # Extrair posições dos cantos
+        marker_positions = {}
+
+        for i, marker_id in enumerate(ids.flatten()):
+            # marker_id é o ID do marcador (0-3)
+            # corners[i] contém os 4 cantos do marcador
+            marker_corners = corners[i][0]
+
+            # Calcular centro do marcador (média dos 4 cantos)
+            center_x = np.mean(marker_corners[:, 0])
+            center_y = np.mean(marker_corners[:, 1])
+
+            marker_positions[int(marker_id)] = (float(center_x), float(center_y))
+
+            logger.info(f"ArUco ID {marker_id}: centro em ({center_x:.1f}, {center_y:.1f})")
+
+        return marker_positions
+
+    except Exception as e:
+        logger.error(f"Erro na detecção ArUco: {e}")
+        return None
+
+
+def _build_corners_from_aruco(marker_positions: dict, img_w: int, img_h: int) -> Optional[list]:
+    """
+    Constrói lista de cantos a partir das posições dos marcadores ArUco.
+
+    Retorna lista de 4 cantos [TL, TR, BR, BL] ou None se não encontrar todos.
+    """
+    if len(marker_positions) < 4:
+        logger.warning(f"Apenas {len(marker_positions)} marcadores ArUco detectados (esperado 4)")
+        return None
+
+    # Verificar se temos todos os IDs necessários
+    required_ids = [0, 1, 2, 3]
+    for marker_id in required_ids:
+        if marker_id not in marker_positions:
+            logger.warning(f"Marcador ArUco ID {marker_id} não encontrado")
+            return None
+
+    # Construir lista de cantos na ordem correta [TL, TR, BR, BL]
+    corners = [
+        list(marker_positions[0]),  # TL (ID 0)
+        list(marker_positions[1]),  # TR (ID 1)
+        list(marker_positions[3]),  # BR (ID 3)
+        list(marker_positions[2])   # BL (ID 2)
+    ]
+
+    logger.info(f"Cantos ArUco: TL={corners[0]}, TR={corners[1]}, BR={corners[2]}, BL={corners[3]}")
+
+    return corners
+
+
+
     """
     Detect the main content area of the answer sheet using edge detection + line detection.
     More robust than bubble detection because it works on ANY scanned document,
@@ -316,12 +413,13 @@ def _validate_rectangle_corners(
 
 def detect_fiducials(image: np.ndarray) -> FiducialResult:
     """
-    Detect fiducial points for perspective correction.
+    Detect fiducial points for perspective correction using ArUco markers.
 
     Strategy (in order of preference):
-    1. Content area detection (edge-based) - most robust
-    2. Detect rectangle border - fallback
-    3. Use image edges - final fallback
+    1. ArUco marker detection (primary) - most accurate and reliable
+    2. Content area detection (edge-based) - fallback
+    3. Detect rectangle border - fallback
+    4. Use image edges - final fallback
 
     The image is resized to width=900 for stable detection, then coordinates
     are scaled back to the original image dimensions.
@@ -337,16 +435,26 @@ def detect_fiducials(image: np.ndarray) -> FiducialResult:
     corners_resized = None
     detection_method = None
 
-    # Strategy 1: Try content area detection (edge-based, most robust for any document)
-    logger.info("Attempting content area edge detection...")
-    corners_resized = _detect_content_area_via_edges(resized)
-    if corners_resized is not None:
-        corners_resized = _validate_rectangle_corners(corners_resized, 900, new_h)
+    # Strategy 1: Try ArUco marker detection (most accurate)
+    logger.info("Attempting ArUco marker detection...")
+    marker_positions = _detect_aruco_markers(resized)
+    if marker_positions is not None and len(marker_positions) >= 4:
+        corners_resized = _build_corners_from_aruco(marker_positions, 900, new_h)
         if corners_resized is not None:
-            detection_method = "EDGES"
-            logger.info("✓ Content area edge detection succeeded")
+            detection_method = "ARUCO"
+            logger.info("✓ ArUco marker detection succeeded")
 
-    # Strategy 2: Try rectangle border detection (fallback)
+    # Strategy 2: Try content area detection (edge-based)
+    if corners_resized is None:
+        logger.info("Attempting content area edge detection...")
+        corners_resized = _detect_content_area_via_edges(resized)
+        if corners_resized is not None:
+            corners_resized = _validate_rectangle_corners(corners_resized, 900, new_h)
+            if corners_resized is not None:
+                detection_method = "EDGES"
+                logger.info("✓ Content area edge detection succeeded")
+
+    # Strategy 3: Try rectangle border detection (fallback)
     if corners_resized is None:
         logger.info("Attempting rectangle border detection...")
         corners_resized = _detect_rectangle_border(resized)
@@ -356,7 +464,7 @@ def detect_fiducials(image: np.ndarray) -> FiducialResult:
                 detection_method = "RECTANGLE"
                 logger.info("✓ Rectangle border detection succeeded")
 
-    # Strategy 3: Fall back to image edges
+    # Strategy 4: Fall back to image edges
     if corners_resized is None:
         logger.warning("All detection methods failed, using image edges")
         corners_resized = [
@@ -370,6 +478,12 @@ def detect_fiducials(image: np.ndarray) -> FiducialResult:
     # Scale corners back to original image size
     corners = [
         [float(x * scale_x), float(y * scale_y)]
+        for x, y in corners_resized
+    ]
+
+    logger.info("Final corners via %s (TL,TR,BR,BL): %s", detection_method, corners)
+
+    return FiducialResult(found=True, count=4, corners=corners)
         for x, y in corners_resized
     ]
 

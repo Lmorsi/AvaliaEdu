@@ -90,13 +90,56 @@ const generateAnswerSheet = async (finalData) => {
     console.error('Falha ao gerar QR Code', err);
   }
 
-  // Solid square fiducial markers for better detection in OMR processing.
-  // 10mm markers for reliable corner detection.
-  // Layout: 4 square markers at each corner of the response area.
-  // All markers have the same size and shape for consistency.
-  const SQUARE_MARKER = `<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60"><rect x="0" y="0" width="60" height="60" fill="black"/></svg>`;
+  // ArUco fiducial markers for robust detection in OMR processing.
+  // Using DICT_4X4_50 with IDs 0, 1, 2, 3 for each corner.
+  // These markers have unique patterns that can be identified even at different angles.
+  // Size: 10mm on the PDF, rendered at 60x60 viewBox for high quality.
 
-  const SQUARE_B64 = Buffer.from(SQUARE_MARKER).toString('base64');
+  // Função para criar SVG de marcador ArUco
+  const createArUcoSVG = (pattern) => {
+    const size = 60;
+    const cellSize = size / 6;
+
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">`;
+
+    // Fundo branco
+    svg += `<rect x="0" y="0" width="${size}" height="${size}" fill="white"/>`;
+
+    // Borda preta
+    svg += `<rect x="0" y="0" width="${size}" height="${cellSize}" fill="black"/>`;
+    svg += `<rect x="0" y="${size - cellSize}" width="${size}" height="${cellSize}" fill="black"/>`;
+    svg += `<rect x="0" y="0" width="${cellSize}" height="${size}" fill="black"/>`;
+    svg += `<rect x="${size - cellSize}" y="0" width="${cellSize}" height="${size}" fill="black"/>`;
+
+    // Padrão interno 4x4
+    const offset = cellSize;
+    for (let row = 0; row < 4; row++) {
+      for (let col = 0; col < 4; col++) {
+        if (pattern[row][col] === 1) {
+          const x = offset + col * cellSize;
+          const y = offset + row * cellSize;
+          svg += `<rect x="${x}" y="${y}" width="${cellSize}" height="${cellSize}" fill="black"/>`;
+        }
+      }
+    }
+
+    svg += '</svg>';
+    return svg;
+  };
+
+  // Padrões ArUco DICT_4X4_50 (IDs 0-3)
+  const ARUCO_PATTERNS = {
+    TL: [[0,0,0,1],[0,0,1,0],[0,1,0,1],[1,0,1,1]],  // ID 0
+    TR: [[0,1,0,0],[1,0,0,0],[0,0,1,0],[0,0,1,1]],  // ID 1
+    BL: [[0,0,1,0],[0,1,0,0],[1,0,0,0],[0,1,1,1]],  // ID 2
+    BR: [[0,1,1,0],[1,0,0,1],[1,0,0,0],[0,1,1,0]]   // ID 3
+  };
+
+  // Gerar SVGs e converter para base64
+  const ARUCO_TL_B64 = Buffer.from(createArUcoSVG(ARUCO_PATTERNS.TL)).toString('base64');
+  const ARUCO_TR_B64 = Buffer.from(createArUcoSVG(ARUCO_PATTERNS.TR)).toString('base64');
+  const ARUCO_BL_B64 = Buffer.from(createArUcoSVG(ARUCO_PATTERNS.BL)).toString('base64');
+  const ARUCO_BR_B64 = Buffer.from(createArUcoSVG(ARUCO_PATTERNS.BR)).toString('base64');
 
   // 3. CONSTRUIR O HTML DO GABARITO - 4 COLUNAS COM MÁXIMO 15 QUESTÕES CADA
   let answerSheetHTML = `
@@ -110,16 +153,17 @@ const generateAnswerSheet = async (finalData) => {
           ${qrCodeImageBase64 ? `<img src="${qrCodeImageBase64}" style="width: ${qrDisplaySize}mm; height: ${qrDisplaySize}mm;" alt="QR Code">` : ''}
       </div>
 
-      <!-- 4 solid square fiducial markers: positioned to bracket the response grid -->
+      <!-- 4 ArUco fiducial markers (DICT_4X4_50, IDs 0-3): positioned to bracket the response grid -->
+      <!-- Each marker has a unique pattern for robust identification -->
       <!-- Top markers well below QR code, centered on response area -->
       <!-- Bottom markers at the end of response area -->
-      <img src="data:image/svg+xml;base64,${SQUARE_B64}" style="position: absolute; top: 55mm; left: 12mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
-      <img src="data:image/svg+xml;base64,${SQUARE_B64}" style="position: absolute; top: 55mm; right: 12mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
-      <img src="data:image/svg+xml;base64,${SQUARE_B64}" style="position: absolute; bottom: 2mm; left: 12mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
-      <img src="data:image/svg+xml;base64,${SQUARE_B64}" style="position: absolute; bottom: 2mm; right: 12mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
+      <img src="data:image/svg+xml;base64,${ARUCO_TL_B64}" style="position: absolute; top: 55mm; left: 12mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
+      <img src="data:image/svg+xml;base64,${ARUCO_TR_B64}" style="position: absolute; top: 55mm; right: 12mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
+      <img src="data:image/svg+xml;base64,${ARUCO_BL_B64}" style="position: absolute; bottom: 2mm; left: 12mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
+      <img src="data:image/svg+xml;base64,${ARUCO_BR_B64}" style="position: absolute; bottom: 2mm; right: 12mm; width: 10mm; height: 10mm; image-rendering: pixelated;" />
 
       <!-- Grade de Respostas (4 colunas, máximo 15 questões por coluna, vertical com opções horizontais) -->
-      <!-- Increased padding (24mm = 12mm marker + 12mm gap) to keep bubbles within square marker boundaries -->
+      <!-- Padding adequado para manter bolhas dentro dos limites dos marcadores ArUco -->
       <div style="display: flex; gap: 4mm; justify-content: space-between;">
   `;
 
