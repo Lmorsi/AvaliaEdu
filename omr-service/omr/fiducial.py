@@ -25,20 +25,25 @@ logger = logging.getLogger(__name__)
 
 def _detect_rectangle_border(image: np.ndarray) -> Optional[list[tuple[float, float]]]:
     """
-    Detect the rectangular border of the answer sheet by finding the largest
-    rectangle contour in the image. Much more robust than L-marker detection.
+    Detect the rectangular border of the answer bubble area by finding contours.
+
+    Strategy:
+    1. Filter out small contours (header dividers, text boxes)
+    2. Look for the largest quadrilateral in the middle-to-lower portion of image
+    3. Reject if corners are too close to the very top (header region)
 
     Returns 4 corner points [TL, TR, BR, BL] or None if detection fails.
     """
+    h, w = image.shape[:2]
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
     # Apply Gaussian blur to reduce noise
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # Use Canny edge detection to find strong edges (sheet border)
+    # Use Canny edge detection to find strong edges
     edges = cv2.Canny(blurred, 50, 150)
 
-    # Dilate edges to close small gaps in the border
+    # Dilate edges to close small gaps
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
     dilated = cv2.dilate(edges, kernel, iterations=2)
 
@@ -49,11 +54,45 @@ def _detect_rectangle_border(image: np.ndarray) -> Optional[list[tuple[float, fl
         logger.warning("No contours found for rectangle detection")
         return None
 
-    # Find the largest contour by area (should be the sheet border)
-    largest_contour = max(contours, key=cv2.contourArea)
-    area = cv2.contourArea(largest_contour)
+    logger.info("Found %d contours, filtering...", len(contours))
 
-    logger.info("Largest contour area: %.0f", area)
+    # Filter contours: reject those that are:
+    # - Too small (noise, header lines, text): < 20% of image area
+    # - Too large (entire page): > 95% of image area
+    # - Too high (header region): top edge in top 20% of image
+    min_area = (w * h) * 0.20
+    max_area = (w * h) * 0.95
+    top_threshold = h * 0.20  # Accept contours if their topmost point is below 20% of image
+
+    valid_contours = []
+    for contour in contours:
+        area = cv2.contourArea(contour)
+
+        # Check area constraints
+        if not (min_area <= area <= max_area):
+            continue
+
+        # Check vertical position: reject if entirely in header region
+        bounding_rect = cv2.boundingRect(contour)
+        rect_y = bounding_rect[1]  # top edge y-coordinate
+
+        if rect_y < top_threshold:
+            # This contour is mostly in header region
+            logger.debug("Contour at y=%d is in header region (threshold=%d), skipping", rect_y, top_threshold)
+            continue
+
+        valid_contours.append(contour)
+        logger.info("Valid contour: area=%.0f, top_y=%d", area, rect_y)
+
+    if not valid_contours:
+        logger.warning("No contours passed validation. Using largest contour as fallback.")
+        largest_contour = max(contours, key=cv2.contourArea)
+    else:
+        # Among valid contours, pick the largest
+        largest_contour = max(valid_contours, key=cv2.contourArea)
+
+    area = cv2.contourArea(largest_contour)
+    logger.info("Selected contour area: %.0f", area)
 
     # Approximate the contour to a polygon
     epsilon = 0.05 * cv2.arcLength(largest_contour, True)
@@ -61,7 +100,7 @@ def _detect_rectangle_border(image: np.ndarray) -> Optional[list[tuple[float, fl
 
     # Check if approximation has 4 points (rectangle)
     if len(approx) != 4:
-        logger.warning("Contour approximation has %d points, expected 4", len(approx))
+        logger.info("Contour approximation has %d points, expected 4. Trying minAreaRect.", len(approx))
         # Try to find a rectangle using rotated rectangles
         rect = cv2.minAreaRect(largest_contour)
         box_points = cv2.boxPoints(rect)
@@ -74,6 +113,29 @@ def _detect_rectangle_border(image: np.ndarray) -> Optional[list[tuple[float, fl
 
     if len(corners) != 4:
         logger.warning("Could not extract 4 corners from contour")
+        return None
+
+    # Validate corners form a proper rectangle
+    xs = [c[0] for c in corners]
+    ys = [c[1] for c in corners]
+    width_span = max(xs) - min(xs)
+    height_span = max(ys) - min(ys)
+
+    logger.info("Detected shape span: width=%.0f, height=%.0f (image: %d x %d)", width_span, height_span, w, h)
+
+    # Rectangle should span significant portion of image
+    if width_span < w * 0.5:
+        logger.warning("Detected shape too narrow (width=%.0f, expected >%.0f)", width_span, w * 0.5)
+        return None
+
+    if height_span < h * 0.4:
+        logger.warning("Detected shape too short (height=%.0f, expected >%.0f)", height_span, h * 0.4)
+        return None
+
+    # Check aspect ratio: answer sheets are roughly portrait (height > width)
+    aspect_ratio = height_span / width_span if width_span > 0 else 0
+    if aspect_ratio < 1.0:
+        logger.warning("Detected shape has wrong aspect ratio: %.2f (expected >1.0 for portrait)", aspect_ratio)
         return None
 
     # Order corners as [TL, TR, BR, BL]
@@ -110,12 +172,67 @@ def _order_rectangle_corners(corners: np.ndarray) -> np.ndarray:
     return ordered
 
 
+def _validate_rectangle_corners(
+    corners: list[tuple[float, float]], img_w: int, img_h: int
+) -> Optional[list[tuple[float, float]]]:
+    """
+    Validate that detected corners form a reasonable rectangle.
+
+    Returns the corners if valid, None otherwise.
+    """
+    if not corners or len(corners) != 4:
+        return None
+
+    xs = [c[0] for c in corners]
+    ys = [c[1] for c in corners]
+
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+
+    width = max_x - min_x
+    height = max_y - min_y
+
+    # Check 1: Should span significant width (>40% of image)
+    if width < img_w * 0.4:
+        logger.warning("Corner validation failed: width too small (%.0f < %.0f)", width, img_w * 0.4)
+        return None
+
+    # Check 2: Should span significant height (>40% of image)
+    if height < img_h * 0.4:
+        logger.warning("Corner validation failed: height too small (%.0f < %.0f)", height, img_h * 0.4)
+        return None
+
+    # Check 3: Should be portrait orientation (height > width)
+    if height < width:
+        logger.warning("Corner validation failed: landscape orientation detected (%.0f x %.0f)", width, height)
+        return None
+
+    # Check 4: All corners should be within image bounds
+    if min_x < 0 or max_x >= img_w or min_y < 0 or max_y >= img_h:
+        logger.warning("Corner validation failed: corners outside image bounds")
+        return None
+
+    # Check 5: No two corners should be too close (minimum ~10% apart)
+    min_dist_threshold = min(img_w, img_h) * 0.1
+    for i in range(4):
+        for j in range(i + 1, 4):
+            dx = corners[i][0] - corners[j][0]
+            dy = corners[i][1] - corners[j][1]
+            dist = (dx * dx + dy * dy) ** 0.5
+            if dist < min_dist_threshold:
+                logger.warning("Corner validation failed: corners too close (dist=%.0f)", dist)
+                return None
+
+    logger.info("Corner validation passed: width=%.0f, height=%.0f", width, height)
+    return corners
+
+
 def detect_fiducials(image: np.ndarray) -> FiducialResult:
     """
     Detect the rectangular border of the answer sheet for perspective correction.
 
     Uses Canny edge detection + contour analysis to find the sheet outline.
-    Much more robust than L-shaped marker detection.
+    Falls back to image edges if detection fails.
 
     The image is resized to width=900 for stable detection, then coordinates
     are scaled back to the original image dimensions.
@@ -131,9 +248,13 @@ def detect_fiducials(image: np.ndarray) -> FiducialResult:
     # Try to detect rectangle border
     corners_resized = _detect_rectangle_border(resized)
 
+    # Validate detected corners - if they don't form a valid rectangle, reject
+    if corners_resized is not None:
+        corners_resized = _validate_rectangle_corners(corners_resized, 900, new_h)
+
     if corners_resized is None:
         logger.error("Rectangle border detection failed, falling back to image edges")
-        # Fallback: use image edges
+        # Fallback: use image edges as safe default
         corners_resized = [
             (0, 0),
             (900, 0),
@@ -147,7 +268,7 @@ def detect_fiducials(image: np.ndarray) -> FiducialResult:
         for x, y in corners_resized
     ]
 
-    logger.info("Detected corners (TL,TR,BR,BL): %s", corners)
+    logger.info("Final corners (TL,TR,BR,BL): %s", corners)
 
     return FiducialResult(found=True, count=4, corners=corners)
 
