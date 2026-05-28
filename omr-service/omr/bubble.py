@@ -17,15 +17,38 @@ from omr.models import BubbleResult, BubbleGrid
 logger = logging.getLogger(__name__)
 
 
-def _find_checkboxes(gray: np.ndarray, min_area: int = 100, max_area: int = 5000) -> list[tuple[int, int, int, int]]:
+def _find_checkboxes(
+    gray: np.ndarray,
+    min_area: int = 100,
+    max_area: int = 5000,
+    roi: tuple[int, int, int, int] | None = None,
+) -> list[tuple[int, int, int, int]]:
     """
     Find rectangular checkbox regions in a grayscale image.
 
     Returns list of (x, y, width, height) for each detected checkbox.
     Uses contour detection and rectangle approximation.
+
+    roi: (x1, y1, x2, y2) bounding box to restrict detection. Coordinates are
+    in the full-image space; returned checkboxes are also in full-image space.
     """
+    # Restrict processing to ROI when provided
+    if roi is not None:
+        img_h, img_w = gray.shape[:2]
+        x1_roi = max(0, roi[0])
+        y1_roi = max(0, roi[1])
+        x2_roi = min(img_w, roi[2])
+        y2_roi = min(img_h, roi[3])
+        working = gray[y1_roi:y2_roi, x1_roi:x2_roi]
+        x_offset, y_offset = x1_roi, y1_roi
+        logger.info("Using ROI (%d,%d,%d,%d), working region %dx%d", x1_roi, y1_roi, x2_roi, y2_roi,
+                    x2_roi - x1_roi, y2_roi - y1_roi)
+    else:
+        working = gray
+        x_offset, y_offset = 0, 0
+
     # Apply Otsu's thresholding for better separation
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    _, thresh = cv2.threshold(working, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
     # Apply morphological operations to enhance rectangles
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
@@ -139,6 +162,7 @@ def detect_bubbles(
     image: np.ndarray,
     fill_threshold: int = 130,
     marked_percentage: float = 0.35,
+    roi: tuple[int, int, int, int] | None = None,
 ) -> BubbleResult:
     """
     Detect and classify checkboxes as marked or unmarked.
@@ -161,7 +185,7 @@ def detect_bubbles(
     logger.info("Image shape: %dx%d (H=%d, W=%d)", width, height, height, width)
 
     # Find all checkboxes
-    checkboxes = _find_checkboxes(gray)
+    checkboxes = _find_checkboxes(gray, roi=roi)
     if not checkboxes:
         logger.warning("No checkboxes detected in image")
         return BubbleResult(found=False, grids=[])

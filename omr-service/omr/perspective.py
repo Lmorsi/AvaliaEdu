@@ -1,9 +1,12 @@
 """
 Perspective correction using fiducial markers.
 
-Given the four corner coordinates of ArUco markers (TL, TR, BR, BL),
-compute a perspective transformation that "warps" the original image
-to a frontal, axis-aligned view.
+Given the four INNER corner coordinates of ArUco markers (the corners that
+face toward the inside of the answer sheet), compute a perspective
+transformation that "warps" the original image to a frontal, axis-aligned view.
+
+Using inner corners instead of centroids ensures the perspective correction
+properly aligns with the boundaries of the answer field.
 """
 
 import logging
@@ -13,33 +16,6 @@ import cv2
 import numpy as np
 
 logger = logging.getLogger(__name__)
-
-
-def _order_corner_points(pts: np.ndarray) -> np.ndarray:
-    """
-    Order four corner points as: top-left, top-right, bottom-right, bottom-left.
-    Uses centroid-based angle calculation for robust ordering in any orientation.
-    """
-    rect = np.zeros((4, 2), dtype="float32")
-
-    # Compute centroid
-    cx = pts[:, 0].mean()
-    cy = pts[:, 1].mean()
-
-    # Calculate angles from centroid to each point (-π to π)
-    angles = np.arctan2(pts[:, 1] - cy, pts[:, 0] - cx)
-
-    # Sort by angle: start from -π (left) and go counter-clockwise
-    sorted_indices = np.argsort(angles)
-    sorted_pts = pts[sorted_indices]
-
-    # Find top point (minimum y) among sorted points
-    min_y_idx = np.argmin(sorted_pts[:, 1])
-
-    # Rotate array so top-left is first, then clockwise: TL, TR, BR, BL
-    rect = np.roll(sorted_pts, -min_y_idx, axis=0)
-
-    return rect
 
 
 def correct_perspective(
@@ -53,7 +29,8 @@ def correct_perspective(
 
     Args:
         image: BGR image to warp
-        corners: Four corner coordinates in image space (order doesn't matter, will be sorted)
+        corners: Four INNER corner coordinates in image space, ordered as TL, TR, BR, BL.
+                 These are the corners of the ArUco markers that face the inside of the sheet.
         target_width: output width (pixels)
         target_height: output height (pixels)
 
@@ -64,9 +41,10 @@ def correct_perspective(
         logger.warning("Cannot correct perspective: need exactly 4 corners")
         return None
 
-    # Ensure corners are in the correct order: TL, TR, BR, BL
-    pts = np.array(corners, dtype="float32")
-    src_pts = _order_corner_points(pts)
+    # Corners are already ordered by fiducial.py based on marker IDs:
+    # TL(ID0 inner corner), TR(ID1 inner corner), BR(ID3 inner corner), BL(ID2 inner corner)
+    # These are the inner corners of each marker that face the answer field
+    src_pts = np.array(corners, dtype="float32")
 
     # Destination points: corners of a rectangle (0, 0) -> (target_width, target_height)
     dst_pts = np.array(

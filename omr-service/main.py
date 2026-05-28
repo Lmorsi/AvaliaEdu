@@ -5,7 +5,7 @@ Phases implemented:
   1. Health check endpoint
   2. QR code reading (token extraction)
   3. Fiducial marker detection (alignment preparation)
-  4. Perspective correction (using detected markers)
+  4. Perspective correction (using inner corners of detected markers)
   5. Bubble reader (bubble detection and classification)
 """
 
@@ -91,13 +91,15 @@ async def scan(
     debug: bool = Query(False, description="Include annotated debug image in response"),
 ):
     """
-    Phase 2 + 3 + 4 endpoint: reads the QR code, detects the four corner
-    fiducial markers, and applies perspective correction.
+    Phase 2 + 3 + 4 + 5 endpoint: reads the QR code, detects the four corner
+    fiducial markers (extracting their inner corners), applies perspective correction,
+    and detects bubbles.
 
     Returns:
       - qr: extracted QR data and parsed token
-      - fiducial: whether the 4 corner markers were found and their coordinates
+      - fiducial: whether the 4 corner markers were found and their inner corner coordinates
       - corrected_image: base64-encoded perspective-corrected image (when fiducials found)
+      - bubbles: detected answer bubbles (when perspective correction successful)
       - debug_image: base64-encoded annotated PNG (only when debug=true)
     """
     raw = await photo.read()
@@ -129,7 +131,7 @@ async def scan(
     fiducial_result: FiducialResult = detect_fiducials(image)
     logger.info("Fiducial detection: found=%s  count=%d", fiducial_result.found, fiducial_result.count)
 
-    # Phase 4 -- Perspective correction
+    # Phase 4 -- Perspective correction (using inner corners of markers)
     corrected_b64: str | None = None
     corrected_image: np.ndarray | None = None
     if fiducial_result.found and fiducial_result.corners:
@@ -151,9 +153,22 @@ async def scan(
     # Optional debug image
     debug_b64: str | None = None
     if debug:
-        annotated = draw_fiducials(image, fiducial_result)
-        if corrected_image is not None and bubble_result and bubble_result.found:
-            annotated = draw_bubbles(corrected_image, bubble_result)
+        # Desenha fiduciais na imagem original (para ver onde foram detectados)
+        annotated_fiducials = draw_fiducials(image, fiducial_result)
+        _, buf_fiducials = cv2.imencode(".png", annotated_fiducials)
+        fiducials_debug_b64 = base64.b64encode(buf_fiducials.tobytes()).decode("ascii")
+
+        # Se houve correção de perspectiva, mostra a imagem corrigida com bolhas
+        annotated = annotated_fiducials
+        if corrected_image is not None:
+            # Desenha bolhas na imagem corrigida
+            if bubble_result and bubble_result.found:
+                annotated = draw_bubbles(corrected_image, bubble_result)
+            else:
+                # Se não houve bolhas, retorna imagem corrigida sem anotações
+                _, buf = cv2.imencode(".png", corrected_image)
+                annotated = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+
         _, buf = cv2.imencode(".png", annotated)
         debug_b64 = base64.b64encode(buf.tobytes()).decode("ascii")
 
