@@ -143,9 +143,9 @@ const generateAnswerSheet = async (finalData) => {
       const validAlternatives = item.alternativas.filter(alt => alt && alt.trim() !== '');
 
       questionHTML += `
-        <div style="display: flex; align-items: flex-start; margin: 1mm 0; break-inside: avoid; gap: 1mm;">
+        <div style="display: flex; align-items: flex-start; margin: 1mm 0; break-inside: avoid; gap: 2mm; padding: 0 2mm;">
           <span style="font-weight: bold; min-width: 8mm; font-size: 11px; line-height: 1.8;">${questionNumber}</span>
-          <div style="display: flex; gap: 2mm; flex-wrap: wrap; align-items: flex-start;">
+          <div style="display: flex; gap: 3.5mm; align-items: flex-start; flex-wrap: nowrap;">
       `;
 
       validAlternatives.forEach((_, altIndex) => {
@@ -199,7 +199,12 @@ const generateAnswerSheet = async (finalData) => {
   // Criar colunas explicitamente para garantir distribuição vertical
   // Coluna 1: 1-15, Coluna 2: 16-30, Coluna 3: 31-45, Coluna 4: 46-60
   for (let col = 0; col < totalColumns; col++) {
-    answerSheetHTML += `<div style="flex: 1; display: flex; flex-direction: column;">`;
+    const isFirstCol = col === 0;
+    const isLastCol = col === totalColumns - 1;
+    const paddingLeft = isFirstCol ? '2mm' : '0';
+    const paddingRight = isLastCol ? '2mm' : '0';
+
+    answerSheetHTML += `<div style="flex: 1; display: flex; flex-direction: column; padding-left: ${paddingLeft}; padding-right: ${paddingRight};">`;
 
     for (let row = 0; row < maxQuestoesPerColumn; row++) {
       const idx = (col * maxQuestoesPerColumn) + row;
