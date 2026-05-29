@@ -99,16 +99,7 @@ const generateAnswerSheet = async (finalData) => {
 
   // 3. CONSTRUIR O HTML DO GABARITO - 4 COLUNAS COM MÁXIMO 15 QUESTÕES CADA
   let answerSheetHTML = `
-    <div style="position: relative; padding: 12mm 12mm 10mm 12mm; margin-top: 5mm; page-break-inside: avoid;">
-      <!-- 4 ArUco Markers framing the questions area (DICT_4X4_50: TL=ID0, TR=ID1, BL=ID2, BR=ID3) -->
-      <!-- Positioned to form a bounding box around all question rows -->
-      <!-- Top markers positioned below the header/QR line, left/right aligned to questions -->
-      <img src="data:image/png;base64,${ARUCO_TL}" style="position: absolute; top: 34mm; left: 10mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
-      <img src="data:image/png;base64,${ARUCO_TR}" style="position: absolute; top: 34mm; right: 10mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
-      <!-- Bottom markers positioned well below the last question rows -->
-      <img src="data:image/png;base64,${ARUCO_BL}" style="position: absolute; bottom: 18mm; left: 10mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
-      <img src="data:image/png;base64,${ARUCO_BR}" style="position: absolute; bottom: 18mm; right: 10mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
-
+    <div style="padding: 12mm 12mm 10mm 12mm; margin-top: 5mm; page-break-inside: avoid;">
       <!-- Cabeçalho do Gabarito com QR Code -->
       <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #ccc; padding-bottom: 3mm; margin-bottom: 3mm;">
           <div>
@@ -118,8 +109,13 @@ const generateAnswerSheet = async (finalData) => {
           ${qrCodeImageBase64 ? `<img src="${qrCodeImageBase64}" style="width: ${qrDisplaySize}mm; height: ${qrDisplaySize}mm;" alt="QR Code">` : ''}
       </div>
 
-      <!-- Grade de Respostas (4 colunas, máximo 15 questões por coluna, vertical com opções horizontais) -->
-      <div style="display: flex; gap: 4mm; justify-content: space-between;">
+      <!-- Grade de Respostas with ArUco Markers (4 colunas, máximo 15 questões por coluna) -->
+      <div style="position: relative; display: flex; gap: 4mm; justify-content: space-between; padding: 1.5mm;">
+        <!-- ArUco Markers framing the questions -->
+        <img src="data:image/png;base64,${ARUCO_TL}" style="position: absolute; top: -1.5mm; left: -1.5mm; width: 5mm; height: 5mm; image-rendering: pixelated; z-index: 10;" />
+        <img src="data:image/png;base64,${ARUCO_TR}" style="position: absolute; top: -1.5mm; right: -1.5mm; width: 5mm; height: 5mm; image-rendering: pixelated; z-index: 10;" />
+        <img src="data:image/png;base64,${ARUCO_BL}" style="position: absolute; bottom: -1.5mm; left: -1.5mm; width: 5mm; height: 5mm; image-rendering: pixelated; z-index: 10;" />
+        <img src="data:image/png;base64,${ARUCO_BR}" style="position: absolute; bottom: -1.5mm; right: -1.5mm; width: 5mm; height: 5mm; image-rendering: pixelated; z-index: 10;" />
   `;
 
   // 4. GERAR AS BOLHAS DE RESPOSTA
