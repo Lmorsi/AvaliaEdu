@@ -153,7 +153,7 @@ const generateAnswerSheet = async (finalData) => {
         questionHTML += `
           <div style="display: flex; flex-direction: column; align-items: center; gap: 0.5mm;">
             <span style="font-weight: bold; font-size: 8px;">${letter}</span>
-            <div class="bubble" style="width: 4mm; height: 4mm; border: 3.2px solid #333; border-radius: 50%; background: white;"></div>
+            <div class="bubble" style="width: 4mm; height: 4mm; border: 1.8px solid #333; border-radius: 50%; background: white;"></div>
           </div>
         `;
       });
@@ -179,11 +179,11 @@ const generateAnswerSheet = async (finalData) => {
             <div style="display: flex; gap: 1.5mm; margin-top: 0;">
               <div style="display: flex; flex-direction: column; align-items: center; gap: 0.3mm;">
                 <span style="font-weight: bold; font-size: 7px;">V</span>
-                <div class="bubble" style="width: 4mm; height: 4mm; border: 3.2px solid #333; border-radius: 50%; background: white;"></div>
+                <div class="bubble" style="width: 4mm; height: 4mm; border: 1.8px solid #333; border-radius: 50%; background: white;"></div>
               </div>
               <div style="display: flex; flex-direction: column; align-items: center; gap: 0.3mm;">
                 <span style="font-weight: bold; font-size: 7px;">F</span>
-                <div class="bubble" style="width: 4mm; height: 4mm; border: 3.2px solid #333; border-radius: 50%; background: white;"></div>
+                <div class="bubble" style="width: 4mm; height: 4mm; border: 1.8px solid #333; border-radius: 50%; background: white;"></div>
               </div>
             </div>
           </div>
