@@ -1,9 +1,9 @@
 """
-Checkbox/Square reader for OMR answer sheets.
+Checkbox/Bubble reader for OMR answer sheets.
 
-Detects filled checkboxes (marked squares) in the answer area of the sheet.
-Uses contour detection and approximation to identify rectangular regions
-and determines fill percentage to classify as marked or unmarked.
+Detects answer bubbles (circles and checkboxes) in the answer area of the sheet.
+Uses contour detection and circularity metrics to identify both rectangular and
+circular regions, then determines fill percentage to classify as marked or unmarked.
 """
 
 import logging
@@ -19,15 +19,15 @@ logger = logging.getLogger(__name__)
 
 def _find_checkboxes(
     gray: np.ndarray,
-    min_area: int = 100,
-    max_area: int = 5000,
+    min_area: int = 50,
+    max_area: int = 10000,
     roi: tuple[int, int, int, int] | None = None,
 ) -> list[tuple[int, int, int, int]]:
     """
-    Find rectangular checkbox regions in a grayscale image.
+    Find checkbox and bubble regions in a grayscale image.
 
-    Returns list of (x, y, width, height) for each detected checkbox.
-    Uses contour detection and rectangle approximation.
+    Handles both rectangular checkboxes and circular bubbles with thin lines.
+    Returns list of (x, y, width, height) for each detected checkbox/bubble.
 
     roi: (x1, y1, x2, y2) bounding box to restrict detection. Coordinates are
     in the full-image space; returned checkboxes are also in full-image space.
@@ -50,9 +50,13 @@ def _find_checkboxes(
     # Apply Otsu's thresholding for better separation
     _, thresh = cv2.threshold(working, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
-    # Apply morphological operations to enhance rectangles
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    gray_processed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
+    # Apply minimal morphological operations to preserve thin circles
+    # Use smaller kernel (2x2) to avoid destroying thin-lined bubbles
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
+    gray_processed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=1)
+
+    # Thin morphology to close small gaps in circle lines
+    gray_processed = cv2.morphologyEx(gray_processed, cv2.MORPH_OPEN, kernel, iterations=1)
 
     # Find contours
     contours, _ = cv2.findContours(gray_processed, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
@@ -63,32 +67,41 @@ def _find_checkboxes(
     for contour in contours:
         area = cv2.contourArea(contour)
         if not (min_area < area < max_area):
-            continue
-
-        # Approximate contour to polygon
-        epsilon = 0.03 * cv2.arcLength(contour, True)
-        approx = cv2.approxPolyDP(contour, epsilon, True)
-
-        # We want rectangles (4 vertices)
-        if len(approx) != 4:
+            logger.debug(f"Contour area {area:.0f} outside range [{min_area}, {max_area}]")
             continue
 
         # Get bounding rectangle
         x, y, w, h = cv2.boundingRect(contour)
 
-        # Check if it's roughly square (aspect ratio close to 1)
+        # Check if it's roughly square/circular (aspect ratio close to 1)
+        # More lenient for circles: 0.6 to 1.4 aspect ratio
         aspect_ratio = float(w) / h if h > 0 else 0
-        if aspect_ratio < 0.7 or aspect_ratio > 1.3:
-            logger.debug(f"Skipped: aspect_ratio={aspect_ratio:.2f} (not square-like)")
+        if aspect_ratio < 0.6 or aspect_ratio > 1.4:
+            logger.debug(f"Skipped: aspect_ratio={aspect_ratio:.2f} (not square/circle-like)")
             continue
 
-        # Ensure minimum size
-        if w < 12 or h < 12:
+        # Ensure minimum size (reduced to handle thin lines better)
+        if w < 8 or h < 8:
             logger.debug(f"Skipped: size too small ({w}x{h})")
             continue
 
+        # Calculate circularity metric for circles
+        # Circularity = 4π * Area / Perimeter²
+        # Perfect circles have circularity ≈ 1.0, rectangles ≈ 0.5-0.7
+        perimeter = cv2.arcLength(contour, True)
+        if perimeter > 0:
+            circularity = (4 * np.pi * area) / (perimeter * perimeter)
+        else:
+            circularity = 0
+
+        # Accept contours with reasonable circularity
+        # Circles: 0.6-1.0, Rectangles: 0.4-0.95
+        if circularity < 0.4:
+            logger.debug(f"Skipped: circularity={circularity:.3f} too low")
+            continue
+
         checkboxes.append((x, y, w, h))
-        logger.info(f"Checkbox: x={x}, y={y}, w={w}, h={h}, aspect={aspect_ratio:.2f}, area={area:.0f}")
+        logger.info(f"Checkbox: x={x}, y={y}, w={w}, h={h}, aspect={aspect_ratio:.2f}, area={area:.0f}, circularity={circularity:.3f}")
 
     logger.info("Total checkboxes found: %d", len(checkboxes))
     return checkboxes
@@ -98,9 +111,10 @@ def _calculate_fill_percentage(
     gray: np.ndarray, x: int, y: int, w: int, h: int, threshold: int = 130
 ) -> float:
     """
-    Calculate fill percentage of a checkbox region.
+    Calculate fill percentage of a checkbox/bubble region.
 
-    Counts dark pixels inside the checkbox and returns percentage.
+    For circles with thin lines, counts both the line itself and internal marks.
+    Counts dark pixels inside the region and returns percentage.
     """
     y1, y2 = max(0, y), min(gray.shape[0], y + h)
     x1, x2 = max(0, x), min(gray.shape[1], x + w)
@@ -109,6 +123,8 @@ def _calculate_fill_percentage(
     if roi.size == 0:
         return 0.0
 
+    # For thin-lined bubbles, the outline itself contributes to the fill
+    # We count pixels darker than threshold (including the line and marks)
     dark_pixels = np.sum(roi < threshold)
     total_pixels = roi.size
 
@@ -119,12 +135,13 @@ def _calculate_fill_percentage(
 
 
 def _cluster_checkboxes(
-    checkboxes: list[tuple[int, int, int, int]], tolerance: int = 30
+    checkboxes: list[tuple[int, int, int, int]], tolerance: int = 50
 ) -> list[list[tuple[int, int, int, int]]]:
     """
     Group checkboxes into grid rows based on y-coordinate proximity.
 
     Checkboxes within `tolerance` pixels vertically are grouped into rows.
+    Uses dynamic tolerance based on the average height of detected bubbles.
     """
     if not checkboxes:
         return []
@@ -132,14 +149,18 @@ def _cluster_checkboxes(
     # Sort by y-coordinate
     sorted_checkboxes = sorted(checkboxes, key=lambda b: b[1])
 
-    logger.info(f"Clustering {len(sorted_checkboxes)} checkboxes with tolerance={tolerance}")
+    # Dynamically adjust tolerance based on bubble sizes
+    avg_height = sum(h for _, _, _, h in sorted_checkboxes) / len(sorted_checkboxes)
+    dynamic_tolerance = max(int(avg_height * 0.8), tolerance)
+
+    logger.info(f"Clustering {len(sorted_checkboxes)} checkboxes with tolerance={dynamic_tolerance} (avg_height={avg_height:.1f})")
 
     rows = []
     current_row = [sorted_checkboxes[0]]
 
     for checkbox in sorted_checkboxes[1:]:
         # If checkbox is close to current row (within tolerance), add to row
-        if abs(checkbox[1] - current_row[0][1]) <= tolerance:
+        if abs(checkbox[1] - current_row[0][1]) <= dynamic_tolerance:
             current_row.append(checkbox)
         else:
             # Start a new row
@@ -161,19 +182,20 @@ def _cluster_checkboxes(
 def detect_bubbles(
     image: np.ndarray,
     fill_threshold: int = 130,
-    marked_percentage: float = 0.35,
+    marked_percentage: float = 0.25,
     roi: tuple[int, int, int, int] | None = None,
 ) -> BubbleResult:
     """
-    Detect and classify checkboxes as marked or unmarked.
+    Detect and classify checkboxes/bubbles as marked or unmarked.
 
     Args:
         image: BGR image (typically perspective-corrected)
         fill_threshold: Grayscale threshold for dark pixel detection (0-255)
-        marked_percentage: Fill % above which a checkbox is considered marked
+        marked_percentage: Fill % above which a bubble is considered marked
+                          (reduced to 0.25 to handle thin-lined circles)
 
     Returns:
-        BubbleResult with grid of marked checkboxes
+        BubbleResult with grid of marked bubbles
     """
     if image is None or image.size == 0:
         logger.error("Image is empty or None")

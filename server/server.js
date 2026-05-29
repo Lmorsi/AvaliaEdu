@@ -100,11 +100,12 @@ const generateAnswerSheet = async (finalData) => {
   // 3. CONSTRUIR O HTML DO GABARITO - 4 COLUNAS COM MÁXIMO 15 QUESTÕES CADA
   let answerSheetHTML = `
     <div style="position: relative; padding: 12mm 12mm 10mm 12mm; margin-top: 5mm; page-break-inside: avoid;">
-      <!-- 4 ArUco Markers nos cantos (DICT_4X4_50: TL=ID0, TR=ID1, BL=ID2, BR=ID3) -->
-      <img src="data:image/png;base64,${ARUCO_TL}" style="position: absolute; top: 1mm; left: 1mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
-      <img src="data:image/png;base64,${ARUCO_TR}" style="position: absolute; top: 1mm; right: 1mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
-      <img src="data:image/png;base64,${ARUCO_BL}" style="position: absolute; bottom: 1mm; left: 1mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
-      <img src="data:image/png;base64,${ARUCO_BR}" style="position: absolute; bottom: 1mm; right: 1mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
+      <!-- 4 ArUco Markers framing the questions area (DICT_4X4_50: TL=ID0, TR=ID1, BL=ID2, BR=ID3) -->
+      <!-- Positioned with padding to frame only the answer field, not the QR code or header -->
+      <img src="data:image/png;base64,${ARUCO_TL}" style="position: absolute; top: 30mm; left: 8mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
+      <img src="data:image/png;base64,${ARUCO_TR}" style="position: absolute; top: 30mm; right: 8mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
+      <img src="data:image/png;base64,${ARUCO_BL}" style="position: absolute; bottom: 8mm; left: 8mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
+      <img src="data:image/png;base64,${ARUCO_BR}" style="position: absolute; bottom: 8mm; right: 8mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
 
       <!-- Cabeçalho do Gabarito com QR Code -->
       <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #ccc; padding-bottom: 3mm; margin-bottom: 3mm;">
@@ -132,7 +133,7 @@ const generateAnswerSheet = async (finalData) => {
     if (item.tipoItem === 'discursiva') {
       questionHTML += `
         <div style="display: flex; align-items: center; margin: 1mm 0; break-inside: avoid;">
-          <span style="font-weight: bold; margin-right: 1.5mm; min-width: 6mm; font-size: 9px;">${questionNumber}</span>
+          <span style="font-weight: bold; margin-right: 1.5mm; min-width: 8mm; font-size: 11px;">${questionNumber}</span>
           <span style="font-size: 8px; font-style: italic; color: #555;">Item discursivo</span>
         </div>
       `;
@@ -144,14 +145,18 @@ const generateAnswerSheet = async (finalData) => {
       const validAlternatives = item.alternativas.filter(alt => alt && alt.trim() !== '');
 
       questionHTML += `
-        <div style="display: flex; align-items: center; margin: 1mm 0; break-inside: avoid;">
-          <span style="font-weight: bold; margin-right: 1.5mm; min-width: 6mm; font-size: 9px;">${questionNumber}</span>
-          <div style="display: flex; gap: 1mm; flex-wrap: wrap;">
+        <div style="display: flex; align-items: flex-start; margin: 1mm 0; break-inside: avoid; gap: 1mm;">
+          <span style="font-weight: bold; min-width: 8mm; font-size: 11px; line-height: 1.8;">${questionNumber}</span>
+          <div style="display: flex; gap: 2mm; flex-wrap: wrap; align-items: flex-start;">
       `;
 
       validAlternatives.forEach((_, altIndex) => {
+        const letter = String.fromCharCode(65 + altIndex);
         questionHTML += `
-          <div class="bubble" style="width: 4.5mm; height: 4.5mm; border: 1.2px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center; font-size: 7px; font-weight: bold; color: #333;">${String.fromCharCode(65 + altIndex)}</div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 0.5mm;">
+            <span style="font-weight: bold; font-size: 8px;">${letter}</span>
+            <div class="bubble" style="width: 4.5mm; height: 4.5mm; border: 1.2px solid #333; border-radius: 50%; background: white;"></div>
+          </div>
         `;
       });
 
@@ -164,17 +169,25 @@ const generateAnswerSheet = async (finalData) => {
 
       questionHTML += `
         <div style="margin: 1mm 0; break-inside: avoid;">
-          <div style="display: flex; align-items: center; margin-bottom: 0.5mm;">
-            <span style="font-weight: bold; font-size: 9px;">${questionNumber}</span>
+          <div style="display: flex; align-items: flex-start; margin-bottom: 1mm;">
+            <span style="font-weight: bold; font-size: 11px; min-width: 8mm;">${questionNumber}</span>
           </div>
       `;
 
       afirmativasValidas.forEach((_, afirmIndex) => {
         questionHTML += `
-          <div style="display: flex; align-items: center; gap: 1mm; margin: 0.5mm 0 0.5mm 4mm;">
-            <span style="font-size: 7px; font-weight: bold; min-width: 3mm;">${afirmIndex + 1}:</span>
-            <div class="bubble" style="width: 4mm; height: 4mm; border: 1.2px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center; font-size: 6px; font-weight: bold; color: #333;">V</div>
-            <div class="bubble" style="width: 4mm; height: 4mm; border: 1.2px solid #333; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center; font-size: 6px; font-weight: bold; color: #333;">F</div>
+          <div style="display: flex; align-items: flex-start; gap: 1mm; margin: 1mm 0 1mm 8mm;">
+            <span style="font-size: 8px; font-weight: bold; min-width: 4mm; margin-top: 0.5mm;">${afirmIndex + 1}:</span>
+            <div style="display: flex; gap: 1.5mm; margin-top: 0;">
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 0.3mm;">
+                <span style="font-weight: bold; font-size: 7px;">V</span>
+                <div class="bubble" style="width: 4mm; height: 4mm; border: 1.2px solid #333; border-radius: 50%; background: white;"></div>
+              </div>
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 0.3mm;">
+                <span style="font-weight: bold; font-size: 7px;">F</span>
+                <div class="bubble" style="width: 4mm; height: 4mm; border: 1.2px solid #333; border-radius: 50%; background: white;"></div>
+              </div>
+            </div>
           </div>
         `;
       });
