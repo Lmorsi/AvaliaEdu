@@ -110,7 +110,7 @@ const generateAnswerSheet = async (finalData) => {
       </div>
 
       <!-- Grade de Respostas with ArUco Markers (4 colunas, máximo 15 questões por coluna) -->
-      <div style="position: relative; display: flex; gap: 4mm; justify-content: space-between; padding: 1.5mm;">
+      <div style="position: relative; display: flex; gap: 4mm; justify-content: space-between; padding: 3mm;">
         <!-- ArUco Markers framing the questions -->
         <img src="data:image/png;base64,${ARUCO_TL}" style="position: absolute; top: -1.5mm; left: -1.5mm; width: 5mm; height: 5mm; image-rendering: pixelated; z-index: 10;" />
         <img src="data:image/png;base64,${ARUCO_TR}" style="position: absolute; top: -1.5mm; right: -1.5mm; width: 5mm; height: 5mm; image-rendering: pixelated; z-index: 10;" />
@@ -153,7 +153,7 @@ const generateAnswerSheet = async (finalData) => {
         questionHTML += `
           <div style="display: flex; flex-direction: column; align-items: center; gap: 0.5mm;">
             <span style="font-weight: bold; font-size: 8px;">${letter}</span>
-            <div class="bubble" style="width: 4.5mm; height: 4.5mm; border: 1.2px solid #333; border-radius: 50%; background: white;"></div>
+            <div class="bubble" style="width: 3mm; height: 3mm; border: 5.2px solid #333; border-radius: 50%; background: white;"></div>
           </div>
         `;
       });
@@ -179,11 +179,11 @@ const generateAnswerSheet = async (finalData) => {
             <div style="display: flex; gap: 1.5mm; margin-top: 0;">
               <div style="display: flex; flex-direction: column; align-items: center; gap: 0.3mm;">
                 <span style="font-weight: bold; font-size: 7px;">V</span>
-                <div class="bubble" style="width: 4mm; height: 4mm; border: 1.2px solid #333; border-radius: 50%; background: white;"></div>
+                <div class="bubble" style="width: 3mm; height: 3mm; border: 5.2px solid #333; border-radius: 50%; background: white;"></div>
               </div>
               <div style="display: flex; flex-direction: column; align-items: center; gap: 0.3mm;">
                 <span style="font-weight: bold; font-size: 7px;">F</span>
-                <div class="bubble" style="width: 4mm; height: 4mm; border: 1.2px solid #333; border-radius: 50%; background: white;"></div>
+                <div class="bubble" style="width: 3mm; height: 3mm; border: 5.2px solid #333; border-radius: 50%; background: white;"></div>
               </div>
             </div>
           </div>
