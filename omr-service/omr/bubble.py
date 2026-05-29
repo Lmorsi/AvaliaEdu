@@ -284,13 +284,23 @@ def _cluster_into_rows(
 
 def _calculate_fill_percentage(
     gray: np.ndarray,
-    x: int, y: int, w: int, h: int,
-    threshold: int = 130
+    x: int, y: int, w: int, h: int
 ) -> float:
     """
-    Calculate fill percentage of a bubble region.
+    Calculate fill percentage using local Otsu thresholding.
 
-    Counts dark pixels inside the bounding box and returns percentage.
+    Automatically finds the ideal separation point between paper (background)
+    and marking (pen/pencil) for THIS SPECIFIC BUBBLE.
+
+    Immune to lighting variations:
+    - Bubble in shadow: Otsu lowers threshold
+    - Bubble in bright light: Otsu increases threshold
+    - Each bubble adapts independently
+
+    Returns:
+        Fill percentage: Pixels inside contour that are marked
+        - Empty bubble: 10-20% (only outline)
+        - Marked bubble: 40-90% (center filled)
     """
     y1 = max(0, y)
     y2 = min(gray.shape[0], y + h)
@@ -301,31 +311,44 @@ def _calculate_fill_percentage(
     if roi.size == 0:
         return 0.0
 
-    dark_pixels = np.sum(roi < threshold)
-    return float(dark_pixels) / float(roi.size)
+    # Apply Otsu's thresholding to find ideal threshold for THIS bubble
+    # Handles shadows and bright areas automatically
+    _, otsu_thresh = cv2.threshold(
+        roi, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+    )
+
+    # Count black pixels (marked areas) after binarization
+    marked_pixels = cv2.countNonZero(otsu_thresh)
+    fill_percentage = float(marked_pixels) / float(roi.size)
+
+    logger.debug(
+        f"Otsu fill: x={x}, y={y}, w={w}, h={h}, "
+        f"marked={marked_pixels}, total={roi.size}, fill={fill_percentage:.2%}"
+    )
+
+    return fill_percentage
 
 
 def detect_bubbles(
     image: np.ndarray,
-    fill_threshold: int = 130,
-    marked_percentage: float = 0.35,
+    marked_percentage: float = 0.30,
     roi: Tuple[int, int, int, int] | None = None,
 ) -> BubbleResult:
     """
     Detect and classify answer bubbles as marked or unmarked.
 
-    Robust pipeline with vertical grid intelligence:
+    Robust pipeline with adaptive fill analysis:
     1. Find bubble candidates via contour detection (C=5 for better filtering)
     2. Remove duplicate detections (NMS)
     3. Filter by consistent size to remove letters/numbers
     4. Validate vertical columns (3+ bubbles per column required)
     5. Cluster into rows (validate 2+ per row)
-    6. Calculate fill percentage
+    6. Calculate fill percentage using local Otsu (immune to lighting)
 
     Args:
         image: BGR image
-        fill_threshold: Grayscale threshold for dark pixel detection
         marked_percentage: Fill % above which bubble is considered marked
+                          (with Otsu: empty ~15%, marked ~45-90%)
         roi: Optional ROI to restrict detection
 
     Returns:
@@ -364,12 +387,13 @@ def detect_bubbles(
         logger.warning("No valid rows found (need 2+ bubbles per row)")
         return BubbleResult(found=False, grids=[])
 
-    # Step 6: Classify bubbles
+    # Step 6: Classify bubbles using adaptive Otsu analysis
     grids = []
     for row_idx, row in enumerate(rows):
         grid_row = []
         for col_idx, (x, y, w, h) in enumerate(row):
-            fill_pct = _calculate_fill_percentage(gray, x, y, w, h, fill_threshold)
+            # Adaptive fill percentage: Otsu finds best threshold for THIS bubble
+            fill_pct = _calculate_fill_percentage(gray, x, y, w, h)
             is_marked = fill_pct >= marked_percentage
 
             grid_row.append({
