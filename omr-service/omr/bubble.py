@@ -331,7 +331,7 @@ def _calculate_fill_percentage(
 
 def detect_bubbles(
     image: np.ndarray,
-    marked_percentage: float = 0.30,
+    marked_percentage: float = 0.35,
     roi: Tuple[int, int, int, int] | None = None,
 ) -> BubbleResult:
     """
@@ -345,10 +345,18 @@ def detect_bubbles(
     5. Cluster into rows (validate 2+ per row)
     6. Calculate fill percentage using local Otsu (immune to lighting)
 
+    Decision Threshold: 35%
+    - If fill_percentage > 35% → MARKED (Green circle in debug)
+    - If fill_percentage ≤ 35% → UNMARKED (Orange circle in debug)
+
+    With Otsu analysis:
+    - Empty bubble: ~10-20% (only outline)
+    - Marked bubble: ~40-90% (filled center)
+    - Clear separation at 35% threshold
+
     Args:
         image: BGR image
-        marked_percentage: Fill % above which bubble is considered marked
-                          (with Otsu: empty ~15%, marked ~45-90%)
+        marked_percentage: Decision threshold (default 0.35 = 35%)
         roi: Optional ROI to restrict detection
 
     Returns:
@@ -432,8 +440,8 @@ def draw_bubbles(image: np.ndarray, result: BubbleResult) -> np.ndarray:
             radius = bubble["radius"]
             color = colors["marked"] if bubble["marked"] else colors["unmarked"]
 
-            # Draw circle
-            cv2.circle(annotated, (cx, cy), radius, color, 2)
+            # Draw circle (reduced thickness: 2px → 0px for thinner outline)
+            cv2.circle(annotated, (cx, cy), radius, color, 0)
 
             # Draw fill percentage text
             fill_pct = bubble["fill_percentage"]
