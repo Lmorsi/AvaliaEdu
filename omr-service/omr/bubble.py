@@ -137,9 +137,11 @@ def _find_bubbles(
         x_offset, y_offset = 0, 0
 
     # Adaptive thresholding for better bubble detection
+    # Parameter C=5: More demanding contrast, ignores light paper textures
+    # and small print artifacts that aren't as dark as bubbles
     thresh = cv2.adaptiveThreshold(
         working, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV, 15, 3
+        cv2.THRESH_BINARY_INV, 15, 5
     )
 
     # Morphological operations to unite inner/outer edges
@@ -171,6 +173,64 @@ def _find_bubbles(
 
     logger.info(f"Found {len(candidates)} bubble candidates")
     return candidates
+
+
+def _validate_grid_columns(
+    bubbles: List[Tuple[int, int, int, int]],
+    column_tolerance: int = 20
+) -> List[Tuple[int, int, int, int]]:
+    """
+    Validate grid by checking vertical alignment of columns.
+
+    A bubble is only considered valid if it has at least 2 other bubbles
+    aligned vertically with it (same column). This eliminates noise and
+    random print artifacts that can't form proper columns.
+
+    Args:
+        bubbles: List of (x, y, w, h) bubbles
+        column_tolerance: Maximum x-distance to consider bubbles in same column
+
+    Returns:
+        Filtered list of bubbles that form valid columns (3+ per column)
+    """
+    if not bubbles or len(bubbles) < 3:
+        logger.info("Grid validation: Not enough bubbles for column validation")
+        return bubbles
+
+    # Extract x-coordinates (center of bubbles)
+    bubble_x_centers = [(b[0] + b[2] // 2, b) for b in bubbles]
+    bubble_x_centers.sort(key=lambda b: b[0])
+
+    # Group bubbles by vertical alignment (column)
+    columns = []
+    for x_center, bubble in bubble_x_centers:
+        # Find if bubble belongs to existing column
+        found_column = False
+        for column in columns:
+            # Check if x-center is close to column's representative x
+            col_x = column[0][0] + column[0][2] // 2
+            if abs(x_center - col_x) <= column_tolerance:
+                column.append(bubble)
+                found_column = True
+                break
+
+        if not found_column:
+            # Create new column
+            columns.append([bubble])
+
+    logger.info(f"Grid validation: Found {len(columns)} potential columns")
+
+    # Filter columns: keep only those with 3+ bubbles (valid answer columns)
+    valid_bubbles = []
+    for col_idx, column in enumerate(columns):
+        if len(column) >= 3:
+            valid_bubbles.extend(column)
+            logger.debug(f"Column {col_idx}: {len(column)} bubbles (VALID)")
+        else:
+            logger.debug(f"Column {col_idx}: {len(column)} bubbles (REJECTED - noise/artifact)")
+
+    logger.info(f"Grid validation: {len(bubbles)} -> {len(valid_bubbles)} bubbles after column validation")
+    return valid_bubbles
 
 
 def _cluster_into_rows(
@@ -254,12 +314,13 @@ def detect_bubbles(
     """
     Detect and classify answer bubbles as marked or unmarked.
 
-    Robust pipeline:
-    1. Find bubble candidates via contour detection
+    Robust pipeline with vertical grid intelligence:
+    1. Find bubble candidates via contour detection (C=5 for better filtering)
     2. Remove duplicate detections (NMS)
     3. Filter by consistent size to remove letters/numbers
-    4. Cluster into rows (validate 2+ per row)
-    5. Calculate fill percentage
+    4. Validate vertical columns (3+ bubbles per column required)
+    5. Cluster into rows (validate 2+ per row)
+    6. Calculate fill percentage
 
     Args:
         image: BGR image
@@ -290,13 +351,20 @@ def detect_bubbles(
         logger.warning("No bubbles remaining after filtering")
         return BubbleResult(found=False, grids=[])
 
-    # Step 4: Cluster into rows (validate grid structure)
+    # Step 4: Validate vertical columns (Grid Intelligence)
+    # Eliminates noise/artifacts that can't form proper columns
+    bubbles = _validate_grid_columns(bubbles, column_tolerance=20)
+    if not bubbles:
+        logger.warning("No bubbles remaining after grid column validation")
+        return BubbleResult(found=False, grids=[])
+
+    # Step 5: Cluster into rows (validate grid structure)
     rows = _cluster_into_rows(bubbles, row_tolerance=25)
     if not rows:
         logger.warning("No valid rows found (need 2+ bubbles per row)")
         return BubbleResult(found=False, grids=[])
 
-    # Step 5: Classify bubbles
+    # Step 6: Classify bubbles
     grids = []
     for row_idx, row in enumerate(rows):
         grid_row = []
