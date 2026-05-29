@@ -101,11 +101,13 @@ const generateAnswerSheet = async (finalData) => {
   let answerSheetHTML = `
     <div style="position: relative; padding: 12mm 12mm 10mm 12mm; margin-top: 5mm; page-break-inside: avoid;">
       <!-- 4 ArUco Markers framing the questions area (DICT_4X4_50: TL=ID0, TR=ID1, BL=ID2, BR=ID3) -->
-      <!-- Positioned with padding to frame only the answer field, not the QR code or header -->
-      <img src="data:image/png;base64,${ARUCO_TL}" style="position: absolute; top: 30mm; left: 8mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
-      <img src="data:image/png;base64,${ARUCO_TR}" style="position: absolute; top: 30mm; right: 8mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
-      <img src="data:image/png;base64,${ARUCO_BL}" style="position: absolute; bottom: 8mm; left: 8mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
-      <img src="data:image/png;base64,${ARUCO_BR}" style="position: absolute; bottom: 8mm; right: 8mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
+      <!-- Positioned to form a bounding box around all question rows -->
+      <!-- Top markers positioned below the header/QR line, left/right aligned to questions -->
+      <img src="data:image/png;base64,${ARUCO_TL}" style="position: absolute; top: 34mm; left: 10mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
+      <img src="data:image/png;base64,${ARUCO_TR}" style="position: absolute; top: 34mm; right: 10mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
+      <!-- Bottom markers positioned well below the last question rows -->
+      <img src="data:image/png;base64,${ARUCO_BL}" style="position: absolute; bottom: 18mm; left: 10mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
+      <img src="data:image/png;base64,${ARUCO_BR}" style="position: absolute; bottom: 18mm; right: 10mm; width: 5mm; height: 5mm; image-rendering: pixelated;" />
 
       <!-- Cabeçalho do Gabarito com QR Code -->
       <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #ccc; padding-bottom: 3mm; margin-bottom: 3mm;">
