@@ -74,9 +74,10 @@ def _find_checkboxes(
         x, y, w, h = cv2.boundingRect(contour)
 
         # Check if it's roughly square/circular (aspect ratio close to 1)
-        # More lenient for circles: 0.6 to 1.4 aspect ratio
+        # Refined for better circle detection: 0.7 to 1.3 aspect ratio
+        # This reduces false positives from distorted text characters
         aspect_ratio = float(w) / h if h > 0 else 0
-        if aspect_ratio < 0.6 or aspect_ratio > 1.4:
+        if aspect_ratio < 0.7 or aspect_ratio > 1.3:
             logger.debug(f"Skipped: aspect_ratio={aspect_ratio:.2f} (not square/circle-like)")
             continue
 
@@ -95,8 +96,9 @@ def _find_checkboxes(
             circularity = 0
 
         # Accept contours with reasonable circularity
-        # Circles: 0.6-1.0, Rectangles: 0.4-0.95
-        if circularity < 0.4:
+        # Refined for circles: 0.7-1.0 (reduces false positives from text)
+        # Previous: 0.4-0.95 (too lenient, detected text characters)
+        if circularity < 0.7:
             logger.debug(f"Skipped: circularity={circularity:.3f} too low")
             continue
 

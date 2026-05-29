@@ -26,13 +26,14 @@ def correct_perspective(
 ) -> Optional[np.ndarray]:
     """
     Warp the image so the four corner points become the corners of a rectangle.
+    Dynamically calculates height to preserve aspect ratio based on detected marker distance.
 
     Args:
         image: BGR image to warp
         corners: Four INNER corner coordinates in image space, ordered as TL, TR, BR, BL.
                  These are the corners of the ArUco markers that face the inside of the sheet.
         target_width: output width (pixels)
-        target_height: output height (pixels)
+        target_height: output height (pixels, used as fallback if ratio calculation fails)
 
     Returns:
         Perspective-corrected image, or None if transformation fails.
@@ -46,13 +47,39 @@ def correct_perspective(
     # These are the inner corners of each marker that face the answer field
     src_pts = np.array(corners, dtype="float32")
 
-    # Destination points: corners of a rectangle (0, 0) -> (target_width, target_height)
+    # Calculate real width and height from detected corners
+    # Width: distance from TL to TR (or BL to BR for average)
+    tl, tr, br, bl = src_pts
+    real_width_top = np.linalg.norm(tr - tl)
+    real_width_bottom = np.linalg.norm(br - bl)
+    real_width = (real_width_top + real_width_bottom) / 2.0
+
+    # Height: distance from TL to BL (or TR to BR for average)
+    real_height_left = np.linalg.norm(bl - tl)
+    real_height_right = np.linalg.norm(br - tr)
+    real_height = (real_height_left + real_height_right) / 2.0
+
+    # Calculate dynamic target height to preserve aspect ratio
+    if real_width > 0:
+        aspect_ratio = real_height / real_width
+        calculated_height = int(target_width * aspect_ratio)
+        logger.info(
+            "Real dimensions: %.1f x %.1f, aspect ratio: %.3f, "
+            "target width: %d, calculated height: %d",
+            real_width, real_height, aspect_ratio, target_width, calculated_height
+        )
+        final_height = calculated_height
+    else:
+        logger.warning("Could not calculate aspect ratio, using default height")
+        final_height = target_height
+
+    # Destination points: corners of a rectangle preserving aspect ratio
     dst_pts = np.array(
         [
-            [0, 0],                          # TL
-            [target_width, 0],               # TR
-            [target_width, target_height],   # BR
-            [0, target_height],              # BL
+            [0, 0],                    # TL
+            [target_width, 0],         # TR
+            [target_width, final_height],   # BR
+            [0, final_height],         # BL
         ],
         dtype="float32",
     )
@@ -68,12 +95,12 @@ def correct_perspective(
         warped = cv2.warpPerspective(
             image,
             matrix,
-            (target_width, target_height),
+            (target_width, final_height),
             flags=cv2.INTER_LINEAR,
             borderMode=cv2.BORDER_CONSTANT,
             borderValue=(255, 255, 255),
         )
-        logger.info("Perspective correction applied: %dx%d", target_width, target_height)
+        logger.info("Perspective correction applied: %dx%d (preserving aspect ratio)", target_width, final_height)
         return warped
     except Exception as e:
         logger.error("Perspective warp failed: %s", str(e))
