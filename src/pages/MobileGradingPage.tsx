@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Camera, ArrowLeft, AlertCircle, Loader } from 'lucide-react'
 import { useOMR } from '../hooks/useOMR'
@@ -64,21 +64,80 @@ const MobileGradingPage: React.FC = () => {
   }, [token, validateQRToken])
 
   // Inicia câmera
-  const startCamera = async () => {
+  const startCamera = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-      })
+      setError(null)
+
+      // Verifica se a API está disponível
+      if (!navigator.mediaDevices?.getUserMedia) {
+        console.warn('getUserMedia não disponível, usando fallback para file input')
+        fileInputRef.current?.click()
+        return
+      }
+
+      // Tenta com constraints simples primeiro (melhor compatibilidade iOS)
+      const constraints = {
+        video: {
+          facingMode: 'environment'
+        },
+        audio: false
+      }
+
+      console.log('Solicitando acesso à câmera...')
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      console.log('Stream obtido com sucesso')
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current?.play().catch(err => {
+            console.error('Erro ao reproduzir video:', err)
+          })
+        }
         setIsCameraActive(true)
         setStage('camera')
       }
     } catch (err) {
       console.error('Camera error:', err)
-      setError('Não foi possível acessar a câmera')
+
+      let errorMsg = 'Não foi possível acessar a câmera'
+      let showFileInput = false
+
+      if (err instanceof DOMException) {
+        switch (err.name) {
+          case 'NotAllowedError':
+            errorMsg = 'Permissão negada. Use o botão abaixo para escolher uma foto.'
+            showFileInput = true
+            break
+          case 'NotFoundError':
+            errorMsg = 'Câmera não encontrada. Use o botão abaixo para escolher uma foto.'
+            showFileInput = true
+            break
+          case 'NotReadableError':
+            errorMsg = 'Câmera ocupada. Feche outros apps e tente novamente.'
+            showFileInput = true
+            break
+          case 'SecurityError':
+            errorMsg = 'HTTPS obrigatório para acessar câmera.'
+            break
+          default:
+            errorMsg = `Erro: ${err.message}`
+            showFileInput = true
+        }
+      }
+
+      setError(errorMsg)
+
+      // Se falhou, abre o seletor de arquivo como fallback
+      if (showFileInput) {
+        setTimeout(() => {
+          fileInputRef.current?.click()
+        }, 500)
+      }
+
+      setStage('idle')
     }
-  }
+  }, [])
 
   // Para câmera
   const stopCamera = () => {
@@ -223,21 +282,29 @@ const MobileGradingPage: React.FC = () => {
               </p>
             </div>
 
-            <div className="bg-gray-800 rounded-2xl p-8 flex items-center justify-center border border-gray-700">
-              <button
-                onClick={startCamera}
-                className="flex flex-col items-center gap-3 hover:opacity-80 transition"
-              >
-                <Camera className="w-16 h-16 text-blue-500" />
-                <span className="text-gray-300 font-medium">Tirar Foto</span>
-              </button>
-            </div>
+            {error && (
+              <div className="bg-red-900/30 border border-red-600 rounded-lg p-3 flex gap-2">
+                <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+                <p className="text-red-300 text-sm">{error}</p>
+              </div>
+            )}
+
+            <button
+              onClick={startCamera}
+              className="w-full bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 active:scale-95 rounded-2xl p-8 flex flex-col items-center gap-4 border border-blue-500 transition shadow-lg"
+            >
+              <Camera className="w-20 h-20 text-white drop-shadow-lg" />
+              <div className="text-center">
+                <span className="text-white font-bold text-xl block">Tirar Foto</span>
+                <span className="text-blue-100 text-xs block mt-1">Toque para abrir câmera</span>
+              </div>
+            </button>
 
             <div className="space-y-2">
               <p className="text-gray-500 text-sm text-center">ou</p>
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 py-3 px-4 rounded-lg transition border border-gray-700"
+                className="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 py-3 px-4 rounded-lg transition border border-gray-700 active:scale-95"
               >
                 Escolher Arquivo
               </button>
@@ -245,6 +312,7 @@ const MobileGradingPage: React.FC = () => {
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
+                capture="environment"
                 onChange={handleFileChange}
                 className="hidden"
               />
@@ -259,12 +327,21 @@ const MobileGradingPage: React.FC = () => {
               ref={videoRef}
               autoPlay
               playsInline
-              className="w-full rounded-xl bg-black border-2 border-blue-500"
+              muted
+              controls={false}
+              className="w-full rounded-xl bg-black border-2 border-blue-500 aspect-video object-cover"
+              style={{
+                WebkitPlaysinline: 'true',
+                transform: 'scaleX(-1)' // Espelha a câmera frontal
+              } as React.CSSProperties}
             />
+            <div className="text-center text-gray-400 text-sm">
+              Posicione o gabarito com os marcadores fiduciais visíveis
+            </div>
             <div className="flex gap-2">
               <button
                 onClick={capturePhoto}
-                className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-lg font-medium transition"
+                className="flex-1 bg-green-600 hover:bg-green-700 active:scale-95 text-white py-3 px-4 rounded-lg font-medium transition"
               >
                 Capturar
               </button>
@@ -273,7 +350,7 @@ const MobileGradingPage: React.FC = () => {
                   stopCamera()
                   handleReset()
                 }}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 py-3 px-4 rounded-lg transition"
+                className="flex-1 bg-gray-800 hover:bg-gray-700 active:scale-95 text-gray-300 py-3 px-4 rounded-lg transition"
               >
                 Cancelar
               </button>
