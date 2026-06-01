@@ -17,6 +17,7 @@ import ClassesPage from './components/ClassesPage'
 import AdminPage from './pages/AdminPage'
 import TestEmailPage from './pages/TestEmailPage'
 import ScanPage from './pages/ScanPage'
+import MobileGradingPage from './pages/MobileGradingPage'
 import QRLandingPage from './pages/QRLandingPage'
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -165,6 +166,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <ScanPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/mobile-grade"
+            element={
+              <ProtectedRoute>
+                <MobileGradingPage />
               </ProtectedRoute>
             }
           />

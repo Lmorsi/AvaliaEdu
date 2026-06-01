@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { AnswerSheetUpload } from '../components/AnswerSheetUpload'
 
 type ScanState = 'idle' | 'scanning' | 'loading' | 'success' | 'error'
 
@@ -33,7 +32,6 @@ const ScanPage: React.FC = () => {
   const [jsQRLoaded, setJsQRLoaded] = useState(false)
   const [manualToken, setManualToken] = useState('')
   const [showManual, setShowManual] = useState(false)
-  const [showOMRUpload, setShowOMRUpload] = useState(false)
 
   // Carregar jsQR dinamicamente
   useEffect(() => {
@@ -312,65 +310,15 @@ const ScanPage: React.FC = () => {
           <span className="text-sm">Voltar</span>
         </button>
         <h1 className="text-white font-semibold text-base">Escanear Cartão</h1>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowOMRUpload(v => !v)}
-            className="text-gray-400 hover:text-white transition-colors text-sm"
-            title="Carregar folha preenchida"
-          >
-            Upload
-          </button>
-          <button
-            onClick={() => setShowManual(v => !v)}
-            className="text-gray-400 hover:text-white transition-colors text-sm"
-          >
-            Manual
-          </button>
-        </div>
+        <button
+          onClick={() => setShowManual(v => !v)}
+          className="text-gray-400 hover:text-white transition-colors text-sm"
+        >
+          Manual
+        </button>
       </header>
 
       <div className="flex-1 flex flex-col items-center justify-start px-4 py-6 gap-5">
-
-        {/* OMR Upload Modal */}
-        {showOMRUpload && (
-          <div className="w-full max-w-2xl">
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-white font-semibold">Carregar Folha Preenchida</h2>
-                <button
-                  onClick={() => setShowOMRUpload(false)}
-                  className="text-gray-400 hover:text-white"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              <AnswerSheetUpload
-                onSuccess={(answers) => {
-                  console.log('Respostas detectadas:', answers)
-                  // Aqui você pode usar as respostas para pré-preencher no dashboard
-                  navigate('/dashboard', {
-                    state: {
-                      view: 'grading',
-                      detectedAnswers: answers
-                    }
-                  })
-                }}
-                onTokenValidated={(data) => {
-                  console.log('Token validado:', data)
-                  setScannedData({
-                    token: data.token,
-                    studentName: data.student_name || 'Aluno',
-                    assessmentName: data.assessment_name || 'Avaliação',
-                    className: data.class_name || 'Turma',
-                    alreadyGraded: data.already_graded || false
-                  })
-                }}
-              />
-            </div>
-          </div>
-        )}
 
         {/* Entrada manual */}
         {showManual && (
