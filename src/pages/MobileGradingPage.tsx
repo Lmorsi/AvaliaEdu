@@ -190,16 +190,28 @@ const MobileGradingPage: React.FC = () => {
   const handleProcessWithOMR = async () => {
     if (!selectedFile) return
 
+    console.log('Iniciando processamento OMR...')
     setStage('processing')
-    const omrResult = await scanAnswerSheet(selectedFile, false)
 
-    if (!omrResult || !omrResult.success) {
+    try {
+      const omrResult = await scanAnswerSheet(selectedFile, false)
+
+      console.log('Resultado OMR:', omrResult)
+
+      if (!omrResult || !omrResult.success) {
+        setError(`Erro ao processar imagem: ${omrResult?.error || 'Desconhecido'}`)
+        setStage('preview')
+        return
+      }
+
+      // Se chegou aqui, mostra o modal
+      console.log('Mostrando modal de resultado')
+      setShowResultModal(true)
+    } catch (err) {
+      console.error('Erro durante processamento:', err)
       setError('Erro ao processar imagem. Tente novamente.')
       setStage('preview')
-      return
     }
-
-    setShowResultModal(true)
   }
 
   // Volta ao estado inicial
@@ -277,36 +289,47 @@ const MobileGradingPage: React.FC = () => {
           <div className="w-full max-w-md space-y-6">
             <div className="text-center space-y-2">
               <h2 className="text-white text-2xl font-bold">Fotografar Gabarito</h2>
-              <p className="text-gray-400">
+              <p className="text-gray-400 text-sm">
                 Tire uma foto clara do gabarito preenchido com os marcadores fiduciais visíveis
               </p>
             </div>
 
             {error && (
               <div className="bg-red-900/30 border border-red-600 rounded-lg p-3 flex gap-2">
-                <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-                <p className="text-red-300 text-sm">{error}</p>
+                <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-red-300 text-sm font-medium">Erro</p>
+                  <p className="text-red-300/80 text-xs">{error}</p>
+                </div>
               </div>
             )}
 
             <button
               onClick={startCamera}
-              className="w-full bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 active:scale-95 rounded-2xl p-8 flex flex-col items-center gap-4 border border-blue-500 transition shadow-lg"
+              className="w-full bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 active:from-blue-800 active:to-blue-900 rounded-2xl p-8 flex flex-col items-center gap-4 border border-blue-500 transition shadow-lg hover:shadow-xl touch-manipulation"
             >
-              <Camera className="w-20 h-20 text-white drop-shadow-lg" />
+              <Camera className="w-24 h-24 text-white drop-shadow-lg" />
               <div className="text-center">
-                <span className="text-white font-bold text-xl block">Tirar Foto</span>
-                <span className="text-blue-100 text-xs block mt-1">Toque para abrir câmera</span>
+                <span className="text-white font-bold text-lg block">Abrir Câmera</span>
+                <span className="text-blue-100 text-xs block mt-1">Toque e tire a foto do gabarito</span>
               </div>
             </button>
 
-            <div className="space-y-2">
-              <p className="text-gray-500 text-sm text-center">ou</p>
+            <div className="space-y-3">
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-700" />
+                </div>
+                <div className="relative flex justify-center">
+                  <span className="px-2 bg-gray-950 text-gray-500 text-sm">ou</span>
+                </div>
+              </div>
+
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 py-3 px-4 rounded-lg transition border border-gray-700 active:scale-95"
+                className="w-full bg-gray-800 hover:bg-gray-700 active:bg-gray-900 text-gray-300 py-3 px-4 rounded-lg transition border border-gray-700 font-medium touch-manipulation"
               >
-                Escolher Arquivo
+                Escolher Arquivo da Galeria
               </button>
               <input
                 ref={fileInputRef}
@@ -323,27 +346,28 @@ const MobileGradingPage: React.FC = () => {
         {/* Stage: Camera - Video ao vivo */}
         {stage === 'camera' && (
           <div className="w-full max-w-md space-y-4">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              controls={false}
-              className="w-full rounded-xl bg-black border-2 border-blue-500 aspect-video object-cover"
-              style={{
-                WebkitPlaysinline: 'true',
-                transform: 'scaleX(-1)' // Espelha a câmera frontal
-              } as React.CSSProperties}
-            />
-            <div className="text-center text-gray-400 text-sm">
-              Posicione o gabarito com os marcadores fiduciais visíveis
+            <div className="space-y-2">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                controls={false}
+                className="w-full rounded-xl bg-black border-2 border-green-500 aspect-video object-cover"
+                style={{
+                  WebkitPlaysinline: 'true'
+                } as React.CSSProperties}
+              />
+              <p className="text-center text-gray-400 text-sm">
+                Posicione o gabarito com os marcadores fiduciais visíveis
+              </p>
             </div>
             <div className="flex gap-2">
               <button
                 onClick={capturePhoto}
                 className="flex-1 bg-green-600 hover:bg-green-700 active:scale-95 text-white py-3 px-4 rounded-lg font-medium transition"
               >
-                Capturar
+                Capturar Foto
               </button>
               <button
                 onClick={() => {
@@ -361,29 +385,42 @@ const MobileGradingPage: React.FC = () => {
         {/* Stage: Preview - Revisar imagem */}
         {stage === 'preview' && preview && (
           <div className="w-full max-w-md space-y-4">
-            <img src={preview} alt="Preview" className="w-full rounded-xl border-2 border-gray-700" />
+            <div className="space-y-2">
+              <p className="text-gray-400 text-sm font-medium">Foto capturada:</p>
+              <img src={preview} alt="Preview" className="w-full rounded-xl border-2 border-gray-700" />
+            </div>
 
             {loading && (
               <div className="bg-blue-900/30 border border-blue-500 rounded-lg p-4 flex items-center gap-3">
                 <Loader className="w-5 h-5 animate-spin text-blue-500" />
-                <span className="text-blue-300 font-medium text-sm">Processando...</span>
+                <span className="text-blue-300 font-medium text-sm">Processando imagem...</span>
               </div>
             )}
 
             {!loading && (
-              <div className="flex gap-2">
+              <div className="space-y-2">
                 <button
                   onClick={handleProcessWithOMR}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-lg font-medium transition"
+                  className="w-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white py-3 px-4 rounded-lg font-medium transition"
                 >
-                  Processar
+                  Processar Gabarito
                 </button>
                 <button
-                  onClick={handleReset}
-                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 py-3 px-4 rounded-lg transition"
+                  onClick={() => {
+                    handleReset()
+                    startCamera()
+                  }}
+                  className="w-full bg-gray-800 hover:bg-gray-700 active:scale-95 text-gray-300 py-3 px-4 rounded-lg transition"
                 >
-                  Retomar
+                  Tirar Outra Foto
                 </button>
+              </div>
+            )}
+
+            {error && (
+              <div className="bg-red-900/30 border border-red-600 rounded-lg p-3 flex gap-2">
+                <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+                <p className="text-red-300 text-sm">{error}</p>
               </div>
             )}
           </div>
