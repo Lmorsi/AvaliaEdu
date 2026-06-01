@@ -59,7 +59,7 @@ type AppView = 'main' | 'grading' | 'reports' | 'classes'
 
 const DashboardRouter: React.FC = () => {
   const location = useLocation()
-  const locationState = location.state as { view?: string; token?: string } | null
+  const locationState = location.state as { view?: string; token?: string; detectedAnswers?: Record<number, string> } | null
 
   const initialView: AppView = locationState?.view === 'grading'
     ? 'grading'
@@ -93,6 +93,7 @@ const DashboardRouter: React.FC = () => {
           onNavigateToReports={nav.toReports}
           onNavigateToClasses={nav.toClasses}
           initialToken={locationState?.token}
+          detectedAnswers={locationState?.detectedAnswers}
         />
       )}
       {currentView === 'reports' && (
