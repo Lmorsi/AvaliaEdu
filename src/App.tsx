@@ -17,11 +17,7 @@ import ClassesPage from './components/ClassesPage'
 import AdminPage from './pages/AdminPage'
 import TestEmailPage from './pages/TestEmailPage'
 import ScanPage from './pages/ScanPage'
-import MobileGradingPage from './pages/MobileGradingPage'
 import QRLandingPage from './pages/QRLandingPage'
-import CameraTestPage from './pages/CameraTestPage'
-import DebugPage from './pages/DebugPage'
-import TestTokenPage from './pages/TestTokenPage'
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth()
@@ -63,7 +59,7 @@ type AppView = 'main' | 'grading' | 'reports' | 'classes'
 
 const DashboardRouter: React.FC = () => {
   const location = useLocation()
-  const locationState = location.state as { view?: string; token?: string; detectedAnswers?: Record<number, string> } | null
+  const locationState = location.state as { view?: string; token?: string } | null
 
   const initialView: AppView = locationState?.view === 'grading'
     ? 'grading'
@@ -97,7 +93,6 @@ const DashboardRouter: React.FC = () => {
           onNavigateToReports={nav.toReports}
           onNavigateToClasses={nav.toClasses}
           initialToken={locationState?.token}
-          detectedAnswers={locationState?.detectedAnswers}
         />
       )}
       {currentView === 'reports' && (
@@ -172,18 +167,7 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/mobile-grade"
-            element={
-              <ProtectedRoute>
-                <MobileGradingPage />
-              </ProtectedRoute>
-            }
-          />
           <Route path="/s/:token" element={<QRLandingPage />} />
-          <Route path="/camera-test" element={<CameraTestPage />} />
-          <Route path="/debug" element={<DebugPage />} />
-          <Route path="/test-token" element={<TestTokenPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>

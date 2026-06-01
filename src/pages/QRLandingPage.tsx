@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 
 // Public landing page for QR code deep links.
 // URL format: /s/:token
-// Camera reads QR → opens this URL → redirects to /mobile-grade?token=TOKEN
+// Camera reads QR → opens this URL → redirects to /scan?token=TOKEN
 // If not logged in, goes to /login then returns here via redirect param.
 const QRLandingPage: React.FC = () => {
   const { token } = useParams<{ token: string }>()
@@ -19,7 +19,7 @@ const QRLandingPage: React.FC = () => {
     }
 
     if (user) {
-      navigate(`/mobile-grade?token=${encodeURIComponent(token)}`, { replace: true })
+      navigate(`/scan?token=${encodeURIComponent(token)}`, { replace: true })
     } else {
       navigate(`/login?redirect=${encodeURIComponent(`/s/${token}`)}`, { replace: true })
     }

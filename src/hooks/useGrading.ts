@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { generateUniqueToken } from '../lib/tokenUtils'
 import type { Class, Student, AssessmentGrading, StudentResult, QuestionStatistic, Folder } from '../lib/supabase'
 
-export const useGrading = (userId: string | undefined, savedAssessments?: any[], initialToken?: string, detectedAnswers?: Record<number, string>) => {
+export const useGrading = (userId: string | undefined, savedAssessments?: any[], initialToken?: string) => {
   const [classes, setClasses] = useState<Class[]>([])
   const [students, setStudents] = useState<Student[]>([])
   const [gradings, setGradings] = useState<AssessmentGrading[]>([])
@@ -170,26 +170,6 @@ export const useGrading = (userId: string | undefined, savedAssessments?: any[],
     resolveToken()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialToken, userId, savedAssessments?.length])
-
-  // Pré-preencher respostas detectadas pelo OMR
-  useEffect(() => {
-    if (!detectedAnswers || Object.keys(detectedAnswers).length === 0) return
-    if (!gradingData.answerKey || gradingData.answerKey.length === 0) return
-
-    const prefilledAnswers: Record<string, string[]> = {}
-
-    Object.entries(detectedAnswers).forEach(([questionIndex, answer]) => {
-      const qIdx = parseInt(questionIndex)
-      if (qIdx >= 0 && qIdx < gradingData.answerKey.length && answer) {
-        prefilledAnswers[`q${qIdx}`] = [answer]
-      }
-    })
-
-    if (Object.keys(prefilledAnswers).length > 0) {
-      setStudentAnswers(prefilledAnswers)
-      console.log('Respostas OMR pré-preenchidas:', prefilledAnswers)
-    }
-  }, [detectedAnswers, gradingData.answerKey])
 
   const loadClasses = async () => {
     try {

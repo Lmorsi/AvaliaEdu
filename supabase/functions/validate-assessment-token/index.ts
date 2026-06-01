@@ -80,27 +80,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Buscar dados do aluno
-    const { data: studentData } = await supabase
-      .from("user_profiles")
-      .select("id, full_name")
-      .eq("id", tokenData.student_id)
-      .maybeSingle();
-
-    // Buscar dados da avaliação
-    const { data: assessmentData } = await supabase
-      .from("assessments")
-      .select("id, title, class_id")
-      .eq("id", tokenData.assessment_id)
-      .maybeSingle();
-
-    // Buscar dados da turma
-    const { data: classData } = await supabase
-      .from("classes")
-      .select("id, name")
-      .eq("id", assessmentData?.class_id)
-      .maybeSingle();
-
     // Se ação é "validate", marcar como validado
     if (action === "validate") {
       const { error: updateError } = await supabase
@@ -126,14 +105,7 @@ Deno.serve(async (req: Request) => {
           student_id: tokenData.student_id,
           is_validated: true,
           message: "Token validado com sucesso",
-          data: {
-            student_id: studentData?.id,
-            student_name: studentData?.full_name || "Aluno",
-            assessment_id: assessmentData?.id,
-            assessment_name: assessmentData?.title || "Avaliação",
-            class_name: classData?.name || "Turma",
-          },
-        }),
+        } as TokenValidationResponse),
         {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -150,14 +122,7 @@ Deno.serve(async (req: Request) => {
         student_id: tokenData.student_id,
         is_validated: tokenData.is_validated,
         message: "Token encontrado",
-        data: {
-          student_id: studentData?.id,
-          student_name: studentData?.full_name || "Aluno",
-          assessment_id: assessmentData?.id,
-          assessment_name: assessmentData?.title || "Avaliação",
-          class_name: classData?.name || "Turma",
-        },
-      }),
+      } as TokenValidationResponse),
       {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
