@@ -19,6 +19,10 @@ import numpy as np
 from fastapi import FastAPI, File, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from dotenv import load_dotenv
+
+# Carrega variáveis de ambiente do arquivo .env
+load_dotenv()
 
 from omr.bubble import detect_bubbles, draw_bubbles
 from omr.fiducial import detect_fiducials, draw_fiducials
@@ -33,21 +37,26 @@ from omr.models import (
 from omr.perspective import correct_perspective
 from omr.qr_reader import read_qr
 
+# Configuração de logging
+log_level = os.getenv("LOG_LEVEL", "INFO")
 logging.basicConfig(
-    level=logging.INFO,
+    level=log_level,
     format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
 )
 logger = logging.getLogger(__name__)
 
+# Inicializa FastAPI
 app = FastAPI(
     title="AvaliaEdu OMR Service",
     description="Optical Mark Recognition for answer sheet processing",
     version="0.1.0",
 )
 
+# CORS - Permite requisições do frontend
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("ALLOWED_ORIGINS", "*").split(","),
+    allow_origins=[origin.strip() for origin in allowed_origins],
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
@@ -179,4 +188,22 @@ async def scan(
         bubbles=bubble_result,
         corrected_image=corrected_b64,
         debug_image=debug_b64,
+    )
+
+
+# Inicia o servidor se executado diretamente
+if __name__ == "__main__":
+    import uvicorn
+
+    port = int(os.getenv("PORT", 8000))
+    environment = os.getenv("ENVIRONMENT", "development")
+
+    logger.info(f"Starting OMR server on port {port} ({environment})")
+
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=port,
+        reload=(environment == "development"),
+        log_level=log_level.lower(),
     )

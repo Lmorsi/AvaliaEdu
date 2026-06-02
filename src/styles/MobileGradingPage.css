@@ -1,0 +1,338 @@
+/* QR Landing Page */
+.qr-landing-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-top: 4px solid white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.error-box {
+  background: white;
+  padding: 2rem;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.error-box p {
+  margin: 0 0 1.5rem 0;
+  font-size: 1rem;
+  color: #333;
+}
+
+.error-box button {
+  background: #667eea;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.error-box button:hover {
+  background: #764ba2;
+}
+
+/* Mobile Grading Page */
+.mobile-grading-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: #f5f7fa;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu,
+    Cantarell, sans-serif;
+  padding: 1rem;
+}
+
+.idle-view {
+  width: 100%;
+  max-width: 500px;
+  text-align: center;
+}
+
+.header {
+  margin-bottom: 3rem;
+}
+
+.header h1 {
+  font-size: 3rem;
+  margin: 0;
+  color: #667eea;
+  font-weight: 700;
+}
+
+.header .subtitle {
+  font-size: 0.9rem;
+  color: #999;
+  margin: 0.5rem 0 0 0;
+  letter-spacing: 0.5px;
+}
+
+.student-info {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 12px;
+  margin-bottom: 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.student-info p {
+  margin: 0.5rem 0;
+  font-size: 1rem;
+  color: #333;
+}
+
+.student-info p strong {
+  color: #667eea;
+}
+
+.student-info p.assessment {
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.camera-button,
+.upload-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+  background: white;
+  border: 2px solid #ddd;
+  border-radius: 12px;
+  font-size: 1rem;
+  color: #333;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-weight: 500;
+}
+
+.camera-button:hover,
+.upload-button:hover {
+  border-color: #667eea;
+  color: #667eea;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+}
+
+.camera-button:active,
+.upload-button:active {
+  transform: scale(0.98);
+}
+
+/* Camera View */
+.camera-view {
+  position: relative;
+  width: 100%;
+  max-width: 500px;
+  height: 600px;
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.camera-view video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.camera-controls {
+  position: absolute;
+  bottom: 1.5rem;
+  left: 0;
+  right: 0;
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  padding: 0 1rem;
+}
+
+.capture-btn,
+.process-btn,
+.save-btn {
+  background: #667eea;
+  color: white;
+  border: none;
+  padding: 0.75rem 2rem;
+  border-radius: 24px;
+  font-size: 1rem;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.capture-btn:hover,
+.process-btn:hover,
+.save-btn:hover {
+  background: #764ba2;
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+}
+
+.capture-btn:disabled,
+.process-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cancel-btn {
+  background: #f5f5f5;
+  color: #333;
+  border: none;
+  padding: 0.75rem 2rem;
+  border-radius: 24px;
+  font-size: 1rem;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s;
+}
+
+.cancel-btn:hover {
+  background: #e0e0e0;
+}
+
+/* Preview View */
+.preview-view {
+  width: 100%;
+  max-width: 500px;
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+}
+
+.preview-view img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.preview-controls {
+  display: flex;
+  gap: 1rem;
+  padding: 1.5rem;
+  justify-content: center;
+}
+
+.preview-controls button {
+  flex: 1;
+  max-width: 200px;
+}
+
+/* Processing View */
+.processing-view {
+  text-align: center;
+}
+
+.processing-view .spinner {
+  margin-bottom: 1.5rem;
+}
+
+.processing-view p {
+  font-size: 1.1rem;
+  color: #667eea;
+  font-weight: 600;
+}
+
+/* Result View */
+.result-view {
+  width: 100%;
+  max-width: 500px;
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+}
+
+.result-view h2 {
+  text-align: center;
+  color: #333;
+  margin: 0 0 1.5rem 0;
+}
+
+.answers-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+}
+
+.answer-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: #f5f7fa;
+  border-radius: 8px;
+  border-left: 4px solid #667eea;
+}
+
+.answer-item .question {
+  font-size: 0.8rem;
+  color: #999;
+  font-weight: 500;
+}
+
+.answer-item .answer {
+  font-size: 1.2rem;
+  color: #667eea;
+  font-weight: 700;
+  margin-top: 0.25rem;
+}
+
+.result-controls {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.result-controls button {
+  flex: 1;
+  max-width: 200px;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .mobile-grading-container {
+    padding: 0;
+  }
+
+  .answers-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .header h1 {
+    font-size: 2rem;
+  }
+
+  .camera-button,
+  .upload-button {
+    padding: 1rem;
+  }
+}
