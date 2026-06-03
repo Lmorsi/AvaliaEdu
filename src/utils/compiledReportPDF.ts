@@ -1,79 +1,123 @@
-# Solução para Problema de Impressão - Relatórios Compilados
+import type { GradingResult, Assessment } from '@/types/index';
 
-## Problema Identificado
+export interface ReportData {
+  assessment: Assessment;
+  results: GradingResult[];
+  generatedAt: string;
+  totalStudents: number;
+  averageScore: number;
+  highestScore: number;
+  lowestScore: number;
+}
 
-A função `window.print()` do navegador tinha controle limitado sobre a paginação, causando sobreposição de dados nas últimas páginas quando imprimindo relatórios com muitas tabelas e dados.
+export function generateCompiledReport(data: ReportData): string {
+  const lines: string[] = [];
 
-## Solução Implementada
+  lines.push('='.repeat(80));
+  lines.push('RELATÓRIO COMPILADO DE AVALIAÇÕES');
+  lines.push('='.repeat(80));
+  lines.push('');
 
-Substituímos o `window.print()` por uma geração de PDF programática usando a biblioteca **jsPDF**, que já estava instalada no projeto. Isso nos dá controle total sobre:
+  lines.push(`Avaliação: ${data.assessment.title}`);
+  lines.push(`Total de Questões: ${data.assessment.totalQuestions}`);
+  lines.push(`Formato de Respostas: ${data.assessment.answerFormat}`);
+  lines.push('');
 
-- Quebras de página
-- Posicionamento exato de cada elemento
-- Verificação de espaço disponível antes de adicionar conteúdo
-- Layout consistente em todas as páginas
+  lines.push('INFORMAÇÕES DO RELATÓRIO');
+  lines.push('-'.repeat(80));
+  lines.push(`Data de Geração: ${data.generatedAt}`);
+  lines.push(`Total de Estudantes: ${data.totalStudents}`);
+  lines.push(`Pontuação Média: ${data.averageScore.toFixed(2)}%`);
+  lines.push(`Pontuação Máxima: ${data.highestScore.toFixed(2)}%`);
+  lines.push(`Pontuação Mínima: ${data.lowestScore.toFixed(2)}%`);
+  lines.push('');
 
-## Arquivos Modificados
+  lines.push('RESULTADOS INDIVIDUAIS');
+  lines.push('-'.repeat(80));
+  lines.push('Estudante | Questões Corretas | Pontuação | Data/Hora');
+  lines.push('-'.repeat(80));
 
-### 1. Novo Arquivo: `src/utils/compiledReportPDF.ts`
+  data.results.forEach((result) => {
+    const percentage = ((result.correctAnswers / result.totalQuestions) * 100).toFixed(2);
+    const date = new Date(result.timestamp).toLocaleString('pt-BR');
+    lines.push(
+      `${result.studentId.padEnd(15)} | ${String(result.correctAnswers).padEnd(17)} | ${percentage.padEnd(9)}% | ${date}`
+    );
+  });
 
-Este arquivo contém a função `generateCompiledReportPDF()` que:
+  lines.push('');
+  lines.push('='.repeat(80));
+  lines.push('FIM DO RELATÓRIO');
+  lines.push('='.repeat(80));
 
-- Recebe os dados do relatório compilado
-- Cria um documento PDF página por página
-- Adiciona automaticamente novas páginas quando necessário
-- Verifica o espaço disponível antes de adicionar cada seção
-- Inclui todas as três tabelas principais:
-  1. Resultados Consolidados por Turma
-  2. Análise Consolidada por Item (Acertos e Erros)
-  3. Percentual de Marcação por Alternativa
+  return lines.join('\n');
+}
 
-### 2. Modificado: `src/components/sections/CompiledReportsView.tsx`
+export function downloadCompiledReport(reportText: string, assessmentTitle: string): void {
+  const element = document.createElement('a');
+  const file = new Blob([reportText], { type: 'text/plain' });
 
-- Importa a nova função de geração de PDF
-- Substitui o botão "Imprimir" por "Gerar PDF"
-- Passa os dados necessários para a função de geração
+  element.href = URL.createObjectURL(file);
+  element.download = `relatorio_${assessmentTitle.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.txt`;
+  document.body.appendChild(element);
+  element.click();
+  document.body.removeChild(element);
+  URL.revokeObjectURL(element.href);
+}
 
-## Como Funciona
+export function generateCSVReport(data: ReportData): string {
+  const rows: string[] = [];
 
-1. **Usuário clica em "Gerar PDF"**: O botão agora chama `generateCompiledReportPDF()` ao invés de `window.print()`
+  rows.push('Estudante,Questões Corretas,Total de Questões,Pontuação (%),Data/Hora');
 
-2. **Verificação de espaço**: Antes de adicionar cada elemento, a função verifica se há espaço suficiente na página atual. Se não houver, adiciona uma nova página automaticamente.
+  data.results.forEach((result) => {
+    const percentage = ((result.correctAnswers / result.totalQuestions) * 100).toFixed(2);
+    const date = new Date(result.timestamp).toLocaleString('pt-BR');
+    rows.push(`"${result.studentId}",${result.correctAnswers},${result.totalQuestions},${percentage},${date}`);
+  });
 
-3. **Controle de paginação**: A função `checkPageBreak(requiredSpace)` garante que nenhum dado será cortado ou sobreposto.
+  return rows.join('\n');
+}
 
-4. **Download automático**: Ao finalizar, o PDF é automaticamente baixado com um nome descritivo incluindo o nome da avaliação e a data.
+export function downloadCSVReport(csvText: string, assessmentTitle: string): void {
+  const element = document.createElement('a');
+  const file = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
 
-## Vantagens da Nova Solução
+  element.href = URL.createObjectURL(file);
+  element.download = `relatorio_${assessmentTitle.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+  document.body.appendChild(element);
+  element.click();
+  document.body.removeChild(element);
+  URL.revokeObjectURL(element.href);
+}
 
-✅ **Controle total de paginação** - Sem mais sobreposições  
-✅ **Layout consistente** - Mesmo resultado em todos os navegadores  
-✅ **Arquivo portátil** - PDF pode ser compartilhado facilmente  
-✅ **Nomes descritivos** - Arquivos salvos com nome da avaliação e data  
-✅ **Formatação otimizada** - Tamanhos de fonte ajustados para caber mais dados  
-✅ **Cores preservadas** - Mantém as cores importantes (verde, vermelho, etc.)  
+export function calculateStatistics(results: GradingResult[], totalQuestions: number): {
+  average: number;
+  highest: number;
+  lowest: number;
+  median: number;
+  standardDeviation: number;
+} {
+  if (results.length === 0) {
+    return { average: 0, highest: 0, lowest: 0, median: 0, standardDeviation: 0 };
+  }
 
-## Melhorias Futuras Possíveis
+  const scores = results.map((r) => (r.correctAnswers / totalQuestions) * 100);
+  const average = scores.reduce((a, b) => a + b, 0) / scores.length;
+  const highest = Math.max(...scores);
+  const lowest = Math.min(...scores);
 
-- Adicionar logo da escola no cabeçalho
-- Incluir numeração de páginas
-- Adicionar opção de orientação paisagem para tabelas muito largas
-- Permitir customização de cores e fontes
-- Adicionar gráficos visuais além das tabelas
+  scores.sort((a, b) => a - b);
+  const median = scores.length % 2 === 0 ? (scores[scores.length / 2 - 1] + scores[scores.length / 2]) / 2 : scores[Math.floor(scores.length / 2)];
 
-## Uso
+  const variance = scores.reduce((sum, score) => sum + Math.pow(score - average, 2), 0) / scores.length;
+  const standardDeviation = Math.sqrt(variance);
 
-1. Acesse **Relatórios e Estatísticas**
-2. Vá para a aba **Dados Compilados entre Turmas**
-3. Selecione uma avaliação
-4. Selecione as turmas que deseja incluir no relatório
-5. Clique em **Gerar PDF**
-6. O arquivo será baixado automaticamente
-
-## Observações Técnicas
-
-- A função mantém margens de 15mm em todos os lados
-- Usa fontes Helvetica (padrão do jsPDF)
-- Tamanho A4 em orientação retrato
-- Fonte de 7-12pt dependendo do tipo de conteúdo
-- Verifica espaço com folga de segurança para evitar cortes
+  return {
+    average,
+    highest,
+    lowest,
+    median,
+    standardDeviation,
+  };
+}
