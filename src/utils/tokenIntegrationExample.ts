@@ -1,142 +1,196 @@
-import { supabase } from '../services/supabase';
+/**
+ * Exemplo de como integrar o sistema de tokens ao fluxo de geração de PDF
+ *
+ * Este arquivo demonstra como:
+ * 1. Gerar tokens para alunos
+ * 2. Passar tokens para o servidor de PDF
+ * 3. Validar tokens ao processar correções
+ */
 
-export interface AssessmentToken {
-  id: string;
-  assessment_id: string;
-  student_id: string;
-  user_id: string;
-  token: string;
-  qr_code_data?: Record<string, unknown>;
-  is_validated: boolean;
-  validation_timestamp?: string;
-  created_at: string;
-}
+import { createAssessmentTokens, getStudentToken } from '../lib/tokenUtils'
+import { validateTokenOnBackend, processToken } from '../lib/tokenValidation'
+import type { AssessmentToken } from '../lib/supabase'
 
-export const generateUniqueToken = (): string => {
-  const timestamp = Date.now();
-  const random = Math.random().toString(36).substring(2, 10);
-  return `${timestamp}_${random}`;
-};
-
-export const createSingleToken = async (
-  assessmentId: string,
-  studentId: string,
-  userId: string,
-  qrCodeData?: Record<string, unknown>
-): Promise<AssessmentToken | null> => {
-  const token = generateUniqueToken();
-
-  const { data, error } = await supabase
-    .from('assessment_tokens')
-    .insert([{
-      assessment_id: assessmentId,
-      student_id: studentId,
-      user_id: userId,
-      token,
-      qr_code_data: qrCodeData || null,
-      is_validated: false,
-    }])
-    .select()
-    .maybeSingle();
-
-  if (error) {
-    console.error('Error creating token:', error);
-    return null;
-  }
-
-  return data as AssessmentToken;
-};
-
-export const createAssessmentTokens = async (
+/**
+ * PASSO 1: Gerar tokens quando a prova é criada
+ * Execute isso ANTES de permitir download do PDF
+ */
+export const generateTokensForAssessment = async (
   assessmentId: string,
   studentIds: string[],
-  userId: string,
-  qrCodeData?: Record<string, unknown>
-): Promise<AssessmentToken[]> => {
-  const tokens = studentIds.map(studentId => ({
-    assessment_id: assessmentId,
-    student_id: studentId,
-    user_id: userId,
-    token: generateUniqueToken(),
-    qr_code_data: qrCodeData || null,
-    is_validated: false,
-  }));
-
-  const { data, error } = await supabase
-    .from('assessment_tokens')
-    .insert(tokens)
-    .select();
-
-  if (error) {
-    console.error('Error creating tokens:', error);
-    return [];
-  }
-
-  return (data || []) as AssessmentToken[];
-};
-
-export const validateToken = async (token: string): Promise<AssessmentToken | null> => {
-  const { data, error } = await supabase
-    .from('assessment_tokens')
-    .select('*')
-    .eq('token', token)
-    .maybeSingle();
-
-  if (error || !data) return null;
-  return data as AssessmentToken;
-};
-
-export const markTokenAsValidated = async (token: string): Promise<boolean> => {
-  const { error } = await supabase
-    .from('assessment_tokens')
-    .update({
-      is_validated: true,
-      validation_timestamp: new Date().toISOString(),
-    })
-    .eq('token', token);
-
-  return !error;
-};
-
-export const getAssessmentTokens = async (
-  assessmentId: string,
   userId: string
-): Promise<AssessmentToken[]> => {
-  const { data, error } = await supabase
-    .from('assessment_tokens')
-    .select('*')
-    .eq('assessment_id', assessmentId)
-    .eq('user_id', userId);
+) => {
+  try {
+    console.log(`Gerando ${studentIds.length} tokens para prova ${assessmentId}`)
 
-  if (error) return [];
-  return (data || []) as AssessmentToken[];
-};
+    const tokens = await createAssessmentTokens(
+      assessmentId,
+      studentIds,
+      userId,
+      {
+        timestamp: new Date().toISOString(),
+        totalStudents: studentIds.length
+      }
+    )
 
-export const getStudentToken = async (
-  assessmentId: string,
-  studentId: string
-): Promise<AssessmentToken | null> => {
-  const { data, error } = await supabase
-    .from('assessment_tokens')
-    .select('*')
-    .eq('assessment_id', assessmentId)
-    .eq('student_id', studentId)
-    .maybeSingle();
+    console.log('Tokens gerados com sucesso:', tokens.length)
+    return tokens
+  } catch (error) {
+    console.error('Erro ao gerar tokens:', error)
+    throw error
+  }
+}
 
-  if (error || !data) return null;
-  return data as AssessmentToken;
-};
+/**
+ * PASSO 2: Passar token para o servidor de PDF
+ * Modificar a função de geração de PDF para incluir tokens
+ */
+export const preparePDFDataWithTokens = async (
+  assessmentData: any,
+  selectedItems: any[],
+  studentId?: string
+) => {
+  try {
+    // Se houver studentId, buscar token correspondente
+    let token = null
+    if (studentId && assessmentData.id) {
+      const studentToken = await getStudentToken(
+        assessmentData.id,
+        studentId
+      )
+      token = studentToken?.token
+    }
 
-export const isTokenValidated = async (token: string): Promise<boolean> => {
-  const result = await validateToken(token);
-  return result?.is_validated ?? false;
-};
+    // Retornar dados preparados para o servidor
+    return {
+      ...assessmentData,
+      selectedItems,
+      studentId,
+      token, // Incluir token no payload
+      timestamp: new Date().toISOString()
+    }
+  } catch (error) {
+    console.error('Erro ao preparar dados do PDF:', error)
+    throw error
+  }
+}
 
-export const deleteAssessmentTokens = async (assessmentId: string): Promise<boolean> => {
-  const { error } = await supabase
-    .from('assessment_tokens')
-    .delete()
-    .eq('assessment_id', assessmentId);
+/**
+ * PASSO 3: Validar token quando receber QR code
+ * Use isso em um app de correção ou processamento
+ */
+export const validateAndProcessQRCode = async (
+  qrCodeContent: string
+) => {
+  try {
+    // Parser JSON do QR code
+    const qrData = JSON.parse(qrCodeContent)
 
-  return !error;
-};
+    if (!qrData.token) {
+      throw new Error('Token não encontrado no QR code')
+    }
+
+    console.log(`Validando token: ${qrData.token}`)
+
+    // Validar token no backend
+    const validationResult = await processToken(qrData.token)
+
+    if (!validationResult.valid) {
+      throw new Error('Token inválido ou não encontrado')
+    }
+
+    console.log('Token validado com sucesso')
+    console.log(`Aluno: ${validationResult.student_id}`)
+    console.log(`Prova: ${validationResult.assessment_id}`)
+
+    return {
+      valid: true,
+      tokenId: validationResult.token_id,
+      studentId: validationResult.student_id,
+      assessmentId: validationResult.assessment_id,
+      isValidated: validationResult.is_validated
+    }
+  } catch (error) {
+    console.error('Erro ao validar QR code:', error)
+    return {
+      valid: false,
+      error: error instanceof Error ? error.message : 'Erro desconhecido'
+    }
+  }
+}
+
+/**
+ * PASSO 4: Exemplo completo de fluxo
+ */
+export const completeTokenFlowExample = async () => {
+  // Dados de exemplo
+  const userId = 'user-123'
+  const assessmentId = 'assessment-456'
+  const studentIds = ['student-1', 'student-2', 'student-3']
+
+  try {
+    // 1. Gerar tokens para todos os alunos
+    console.log('1. Gerando tokens...')
+    const tokens = await generateTokensForAssessment(
+      assessmentId,
+      studentIds,
+      userId
+    )
+
+    // 2. Professor faz download do PDF (tokens são incluídos nos QR codes)
+    console.log('2. Preparando dados para PDF...')
+    const pdfData = await preparePDFDataWithTokens(
+      { id: assessmentId, nome_avaliacao: 'Avaliação 1' },
+      [{ /* items */ }],
+      studentIds[0]
+    )
+
+    // 3. Aplicativo de correção lê o QR code
+    console.log('3. Simulando leitura de QR code...')
+    const mockQRCode = JSON.stringify({
+      assessmentId,
+      studentId: studentIds[0],
+      token: tokens[0].token,
+      gabarito: [/* dados */]
+    })
+
+    // 4. Validar e processar
+    console.log('4. Validando token...')
+    const result = await validateAndProcessQRCode(mockQRCode)
+
+    if (result.valid) {
+      console.log('Fluxo completo validado com sucesso!')
+      console.log('Pronto para processar correção')
+    }
+  } catch (error) {
+    console.error('Erro no fluxo completo:', error)
+  }
+}
+
+/**
+ * Integração com useDashboard.ts
+ * Adicionar isso na função generatePDF:
+ *
+ * const generatePDF = useCallback(async (columns: string) => {
+ *   // ... código existente ...
+ *
+ *   // NOVO: Gerar tokens antes de fazer requisição
+ *   if (userId && selectedItemsForAssessment.length > 0) {
+ *     try {
+ *       const students = selectedItemsForAssessment.map(item => item.student_id)
+ *       await generateTokensForAssessment(assessmentId, students, userId)
+ *     } catch (error) {
+ *       console.warn('Aviso ao gerar tokens:', error)
+ *     }
+ *   }
+ *
+ *   // Preparar dados com tokens
+ *   const pdfDataWithTokens = await preparePDFDataWithTokens(
+ *     assessmentData,
+ *     selectedItemsForAssessment
+ *   )
+ *
+ *   const response = await callPdfApi('generate-pdf', { columns, ...pdfDataWithTokens })
+ *   // ... resto do código ...
+ * }, [userId, assessmentData, selectedItemsForAssessment])
+ */

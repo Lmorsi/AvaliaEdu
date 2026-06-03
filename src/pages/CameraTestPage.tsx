@@ -1,157 +1,95 @@
-import { useState, useRef, useEffect } from 'react';
-import { Camera, Upload, RefreshCw, CircleCheck as CheckCircle } from 'lucide-react';
+import React, { useRef, useState, useCallback } from 'react'
+import { Camera, X } from 'lucide-react'
 
-export function CameraTestPage() {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [stream, setStream] = useState<MediaStream | null>(null);
-  const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const [cameraActive, setCameraActive] = useState(false);
-  const [cameraAvailable, setCameraAvailable] = useState<boolean | null>(null);
+const CameraTestPage: React.FC = () => {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [status, setStatus] = useState<string>('Pronto para testar')
+  const [isStreaming, setIsStreaming] = useState(false)
 
-  useEffect(() => {
-    checkCameraAvailability();
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach(t => t.stop());
+  const startCamera = useCallback(async () => {
+    try {
+      setStatus('Solicitando câmera...')
+
+      const constraints = {
+        video: {
+          facingMode: 'environment'
+        },
+        audio: false
       }
-    };
-  }, [stream]);
 
-  const checkCameraAvailability = async () => {
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const hasCamera = devices.some(d => d.kind === 'videoinput');
-      setCameraAvailable(hasCamera);
-    } catch {
-      setCameraAvailable(false);
-    }
-  };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      setStatus('Câmera aberta com sucesso!')
+      setIsStreaming(true)
 
-  const startCamera = async () => {
-    try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
-      });
       if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
+        videoRef.current.srcObject = stream
       }
-      setStream(mediaStream);
-      setCameraActive(true);
     } catch (err) {
-      console.error('Camera error:', err);
-      alert('Nao foi possivel acessar a camera');
+      console.error('Error:', err)
+      setStatus(`Erro: ${err instanceof Error ? err.message : String(err)}`)
     }
-  };
+  }, [])
 
   const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach(t => t.stop());
-      setStream(null);
+    if (videoRef.current?.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream
+      stream.getTracks().forEach(track => track.stop())
+      setIsStreaming(false)
+      setStatus('Câmera fechada')
     }
-    setCameraActive(false);
-  };
-
-  const capturePhoto = () => {
-    if (!videoRef.current || !canvasRef.current) return;
-    const ctx = canvasRef.current.getContext('2d');
-    if (!ctx) return;
-    canvasRef.current.width = videoRef.current.videoWidth;
-    canvasRef.current.height = videoRef.current.videoHeight;
-    ctx.drawImage(videoRef.current, 0, 0);
-    const dataUrl = canvasRef.current.toDataURL('image/jpeg');
-    setCapturedImage(dataUrl);
-    stopCamera();
-  };
-
-  const reset = () => {
-    setCapturedImage(null);
-    setCameraActive(false);
-  };
+  }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'system-ui, sans-serif', padding: '2rem' }}>
-      <div style={{ maxWidth: 600, margin: '0 auto' }}>
-        <h1 style={{ margin: '0 0 8px', fontSize: 24, fontWeight: 700, color: '#1e293b' }}>
-          Teste de Camera
-        </h1>
-        <p style={{ margin: '0 0 2rem', color: '#64748b', fontSize: 14 }}>
-          Verifique se sua camera esta funcionando corretamente.
-        </p>
+    <div className="min-h-screen bg-gray-950 p-4 flex flex-col items-center justify-center">
+      <div className="w-full max-w-md space-y-6">
+        <h1 className="text-white text-2xl font-bold text-center">Teste de Câmera</h1>
 
-        {cameraAvailable === false && (
-          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '1rem', marginBottom: 16, color: '#dc2626', fontSize: 14 }}>
-            Nenhuma camera encontrada neste dispositivo.
+        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+          <p className="text-gray-300 text-center text-sm">{status}</p>
+        </div>
+
+        {isStreaming ? (
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="w-full rounded-lg bg-black border-2 border-green-500"
+          />
+        ) : (
+          <div className="w-full aspect-video bg-black rounded-lg border-2 border-gray-700 flex items-center justify-center">
+            <Camera className="w-12 h-12 text-gray-600" />
           </div>
         )}
 
-        {cameraAvailable === true && (
-          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '1rem', marginBottom: 16, color: '#16a34a', fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <CheckCircle size={16} />
-            Camera detectada e disponivel.
-          </div>
-        )}
-
-        <div style={{ background: '#fff', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: 16 }}>
-          {cameraActive ? (
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              style={{ width: '100%', display: 'block', maxHeight: 400, objectFit: 'cover', background: '#000' }}
-            />
-          ) : capturedImage ? (
-            <img src={capturedImage} alt="Captura" style={{ width: '100%', display: 'block' }} />
+        <div className="space-y-2">
+          {!isStreaming ? (
+            <button
+              onClick={startCamera}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-lg font-medium transition"
+            >
+              Abrir Câmera
+            </button>
           ) : (
-            <div style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', flexDirection: 'column', gap: 12 }}>
-              <Camera size={48} color="#94a3b8" />
-              <p style={{ margin: 0, color: '#94a3b8', fontSize: 14 }}>Camera inativa</p>
-            </div>
+            <button
+              onClick={stopCamera}
+              className="w-full bg-red-600 hover:bg-red-700 text-white py-3 px-4 rounded-lg font-medium transition flex items-center justify-center gap-2"
+            >
+              <X className="w-5 h-5" />
+              Fechar
+            </button>
           )}
         </div>
 
-        <canvas ref={canvasRef} style={{ display: 'none' }} />
-
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          {!cameraActive && !capturedImage && (
-            <button
-              onClick={startCamera}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 14 }}
-            >
-              <Camera size={16} />
-              Iniciar Camera
-            </button>
-          )}
-
-          {cameraActive && (
-            <>
-              <button
-                onClick={capturePhoto}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 14 }}
-              >
-                <Upload size={16} />
-                Capturar Foto
-              </button>
-              <button
-                onClick={stopCamera}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', background: '#fff', color: '#475569', border: '1px solid #e2e8f0', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 14 }}
-              >
-                Parar Camera
-              </button>
-            </>
-          )}
-
-          {capturedImage && (
-            <button
-              onClick={reset}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', background: '#fff', color: '#475569', border: '1px solid #e2e8f0', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 14 }}
-            >
-              <RefreshCw size={16} />
-              Nova Foto
-            </button>
-          )}
+        <div className="bg-gray-800 rounded-lg p-3 text-gray-400 text-xs space-y-1">
+          <p>Informações do Device:</p>
+          <p>- HTTPS: {window.location.protocol === 'https:' ? 'Sim' : 'Não'}</p>
+          <p>- getUserMedia: {navigator.mediaDevices?.getUserMedia ? 'Sim' : 'Não'}</p>
+          <p>- User Agent: {navigator.userAgent.substring(0, 60)}...</p>
         </div>
       </div>
     </div>
-  );
+  )
 }
+
+export default CameraTestPage
