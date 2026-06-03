@@ -180,32 +180,3 @@ async def scan(
         corrected_image=corrected_b64,
         debug_image=debug_b64,
     )
-
-
-# ---------------------------------------------------------------------------
-# Marker generation endpoint
-# ---------------------------------------------------------------------------
-
-@app.get("/api/omr/marker/{marker_id}")
-def get_marker_image(
-    marker_id: int,
-    size: int = Query(200, ge=50, le=1000, description="Marker image size in pixels"),
-):
-    """
-    Generate and return an ArUco DICT_4X4_50 marker as base64 PNG.
-    Used by the frontend to embed accurate markers in printable answer sheets.
-    """
-    if marker_id < 0 or marker_id > 49:
-        return JSONResponse(
-            status_code=400,
-            content={"error": "marker_id must be between 0 and 49"},
-        )
-
-    aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
-    marker_img = cv2.aruco.generateImageMarker(aruco_dict, marker_id, size)
-
-    _, buf = cv2.imencode(".png", marker_img)
-    b64 = base64.b64encode(buf.tobytes()).decode("ascii")
-
-    logger.info("Generated marker id=%d size=%d", marker_id, size)
-    return {"id": marker_id, "image": b64, "size": size, "format": "png"}

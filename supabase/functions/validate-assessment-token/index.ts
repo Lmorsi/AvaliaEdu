@@ -4,10 +4,15 @@ import { createClient } from "npm:@supabase/supabase-js@2.75.0";
 interface TokenValidationRequest {
   token: string;
   action?: "validate" | "check";
-  // Quando action="validate", pode enviar respostas para salvar junto
-  answers?: Record<string, string>;
-  student_id?: string;
+}
+
+interface TokenValidationResponse {
+  valid: boolean;
+  token_id?: string;
   assessment_id?: string;
+  student_id?: string;
+  is_validated?: boolean;
+  message: string;
 }
 
 const corsHeaders = {
@@ -18,7 +23,10 @@ const corsHeaders = {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 200, headers: corsHeaders });
+    return new Response(null, {
+      status: 200,
+      headers: corsHeaders,
+    });
   }
 
   try {
@@ -30,134 +38,130 @@ Deno.serve(async (req: Request) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
     const body: TokenValidationRequest = await req.json();
-    const { token, action = "check", answers } = body;
+    const { token, action = "validate" } = body;
 
     if (!token) {
       return new Response(
-        JSON.stringify({ valid: false, message: "Token é obrigatório" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({
+          valid: false,
+          message: "Token é obrigatório",
+        } as TokenValidationResponse),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
       );
     }
 
-    // Buscar token + dados do aluno + avaliação em uma query
+    // Buscar token no banco de dados
     const { data: tokenData, error: tokenError } = await supabase
       .from("assessment_tokens")
       .select("*")
       .eq("token", token)
       .maybeSingle();
 
-    if (tokenError) throw new Error(`Erro ao validar token: ${tokenError.message}`);
+    if (tokenError) {
+      console.error("Erro ao buscar token:", tokenError);
+      throw new Error(`Erro ao validar token: ${tokenError.message}`);
+    }
 
     if (!tokenData) {
       return new Response(
-        JSON.stringify({ valid: false, message: "Token não encontrado ou inválido" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({
+          valid: false,
+          message: "Token não encontrado ou inválido",
+        } as TokenValidationResponse),
+        {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
       );
     }
 
-    // Buscar dados complementares em paralelo
-    const [studentRes, assessmentRes] = await Promise.all([
-      supabase.from("user_profiles").select("id, full_name").eq("id", tokenData.student_id).maybeSingle(),
-      supabase.from("assessments").select("id, title, class_id").eq("id", tokenData.assessment_id).maybeSingle(),
-    ]);
+    // Buscar dados do aluno
+    const { data: studentData } = await supabase
+      .from("user_profiles")
+      .select("id, full_name")
+      .eq("id", tokenData.student_id)
+      .maybeSingle();
 
-    const studentData = studentRes.data;
-    const assessmentData = assessmentRes.data;
+    // Buscar dados da avaliação
+    const { data: assessmentData } = await supabase
+      .from("assessments")
+      .select("id, title, class_id")
+      .eq("id", tokenData.assessment_id)
+      .maybeSingle();
 
-    let classData = null;
-    if (assessmentData?.class_id) {
-      const classRes = await supabase
-        .from("classes")
-        .select("id, name")
-        .eq("id", assessmentData.class_id)
-        .maybeSingle();
-      classData = classRes.data;
-    }
+    // Buscar dados da turma
+    const { data: classData } = await supabase
+      .from("classes")
+      .select("id, name")
+      .eq("id", assessmentData?.class_id)
+      .maybeSingle();
 
-    const responseData = {
-      student_id: studentData?.id || tokenData.student_id,
-      student_name: studentData?.full_name || "Aluno",
-      assessment_id: assessmentData?.id || tokenData.assessment_id,
-      assessment_name: assessmentData?.title || "Avaliação",
-      class_name: classData?.name || "",
-    };
+    // Se ação é "validate", marcar como validado
+    if (action === "validate") {
+      const { error: updateError } = await supabase
+        .from("assessment_tokens")
+        .update({
+          is_validated: true,
+          validation_timestamp: new Date().toISOString(),
+        })
+        .eq("token", token);
 
-    // ── Action: check — apenas verificar ────────────────────────────────────
-    if (action === "check") {
+      if (updateError) {
+        console.error("Erro ao atualizar validação:", updateError);
+        throw new Error(
+          `Erro ao marcar token como validado: ${updateError.message}`
+        );
+      }
+
       return new Response(
         JSON.stringify({
           valid: true,
           token_id: tokenData.id,
           assessment_id: tokenData.assessment_id,
           student_id: tokenData.student_id,
-          is_validated: tokenData.is_validated,
-          message: "Token encontrado",
-          data: responseData,
+          is_validated: true,
+          message: "Token validado com sucesso",
+          data: {
+            student_id: studentData?.id,
+            student_name: studentData?.full_name || "Aluno",
+            assessment_id: assessmentData?.id,
+            assessment_name: assessmentData?.title || "Avaliação",
+            class_name: classData?.name || "Turma",
+          },
         }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
       );
     }
 
-    // ── Action: validate — marcar como validado + salvar respostas ───────────
-    // 1. Marcar token como validado
-    const { error: updateError } = await supabase
-      .from("assessment_tokens")
-      .update({ is_validated: true, validation_timestamp: new Date().toISOString() })
-      .eq("token", token);
-
-    if (updateError) throw new Error(`Erro ao validar token: ${updateError.message}`);
-
-    // 2. Salvar respostas se fornecidas
-    let saved = false;
-    if (answers && Object.keys(answers).length > 0) {
-      const studentId = tokenData.student_id;
-      const assessmentId = tokenData.assessment_id;
-
-      const { error: upsertError } = await supabase
-        .from("student_results")
-        .upsert(
-          [{
-            student_id: studentId,
-            assessment_id: assessmentId,
-            answers,
-            created_at: new Date().toISOString(),
-          }],
-          { onConflict: "student_id,assessment_id" }
-        );
-
-      if (upsertError) {
-        // Tenta insert simples se upsert falhar (constraint pode não existir)
-        const { error: insertError } = await supabase
-          .from("student_results")
-          .insert([{
-            student_id: studentId,
-            assessment_id: assessmentId,
-            answers,
-            created_at: new Date().toISOString(),
-          }]);
-        if (insertError) {
-          console.error("Erro ao salvar respostas:", insertError);
-        } else {
-          saved = true;
-        }
-      } else {
-        saved = true;
-      }
-    }
-
+    // Se ação é "check", apenas verificar
     return new Response(
       JSON.stringify({
         valid: true,
-        saved,
         token_id: tokenData.id,
         assessment_id: tokenData.assessment_id,
         student_id: tokenData.student_id,
-        is_validated: true,
-        message: saved ? "Token validado e respostas salvas" : "Token validado com sucesso",
-        data: responseData,
+        is_validated: tokenData.is_validated,
+        message: "Token encontrado",
+        data: {
+          student_id: studentData?.id,
+          student_name: studentData?.full_name || "Aluno",
+          assessment_id: assessmentData?.id,
+          assessment_name: assessmentData?.title || "Avaliação",
+          class_name: classData?.name || "Turma",
+        },
       }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
     );
   } catch (error) {
     console.error("Erro na validação de token:", error);
@@ -165,8 +169,11 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({
         valid: false,
         message: `Erro interno: ${error instanceof Error ? error.message : "Desconhecido"}`,
-      }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      } as TokenValidationResponse),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
     );
   }
 });
