@@ -61,13 +61,13 @@ Deno.serve(async (req: Request) => {
     }
 
     // Buscar token com joins para trazer dados completos do aluno/avaliação/turma
+    // classes é obtida via grading_students (não há FK direta em assessment_tokens)
     const { data: tokenData, error: tokenError } = await supabase
       .from("assessment_tokens")
       .select(`
         *,
-        grading_students(id, name, class_id),
-        assessments(id, nome_avaliacao, tipo_avaliacao, selected_items),
-        classes(id, name)
+        grading_students(id, name, class_id, classes(id, name)),
+        assessments(id, nome_avaliacao, tipo_avaliacao)
       `)
       .eq("token", token)
       .maybeSingle();
@@ -92,7 +92,7 @@ Deno.serve(async (req: Request) => {
 
     const student = tokenData.grading_students as any;
     const assessment = tokenData.assessments as any;
-    const classData = tokenData.classes as any;
+    const classData = student?.classes as any;
 
     const studentName = student?.name || null;
     const assessmentName =
