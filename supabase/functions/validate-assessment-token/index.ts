@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.75.0";
 
 interface TokenValidationRequest {
   token: string;
-  action?: "validate" | "check";
+  action?: "validate" | "check" | "scan";
 }
 
 interface TokenValidationResponse {
@@ -11,6 +11,11 @@ interface TokenValidationResponse {
   token_id?: string;
   assessment_id?: string;
   student_id?: string;
+  student_name?: string;
+  assessment_name?: string;
+  class_name?: string;
+  class_id?: string;
+  user_id?: string;
   is_validated?: boolean;
   message: string;
 }
@@ -55,10 +60,15 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Buscar token no banco de dados
+    // Buscar token com joins para trazer dados completos do aluno/avaliação/turma
     const { data: tokenData, error: tokenError } = await supabase
       .from("assessment_tokens")
-      .select("*")
+      .select(`
+        *,
+        grading_students(id, name, class_id),
+        assessments(id, nome_avaliacao, tipo_avaliacao, selected_items),
+        classes(id, name)
+      `)
       .eq("token", token)
       .maybeSingle();
 
@@ -80,8 +90,20 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Se ação é "validate", marcar como validado
-    if (action === "validate") {
+    const student = tokenData.grading_students as any;
+    const assessment = tokenData.assessments as any;
+    const classData = tokenData.classes as any;
+
+    const studentName = student?.name || null;
+    const assessmentName =
+      assessment?.nome_avaliacao ||
+      assessment?.tipo_avaliacao ||
+      "Avaliação";
+    const className = classData?.name || null;
+    const classId = classData?.id || student?.class_id || null;
+
+    // Ação "scan": marca como validado e retorna dados completos
+    if (action === "validate" || action === "scan") {
       const { error: updateError } = await supabase
         .from("assessment_tokens")
         .update({
@@ -103,6 +125,11 @@ Deno.serve(async (req: Request) => {
           token_id: tokenData.id,
           assessment_id: tokenData.assessment_id,
           student_id: tokenData.student_id,
+          student_name: studentName,
+          assessment_name: assessmentName,
+          class_name: className,
+          class_id: classId,
+          user_id: tokenData.user_id,
           is_validated: true,
           message: "Token validado com sucesso",
         } as TokenValidationResponse),
@@ -113,13 +140,18 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Se ação é "check", apenas verificar
+    // Ação "check": apenas verificar sem marcar
     return new Response(
       JSON.stringify({
         valid: true,
         token_id: tokenData.id,
         assessment_id: tokenData.assessment_id,
         student_id: tokenData.student_id,
+        student_name: studentName,
+        assessment_name: assessmentName,
+        class_name: className,
+        class_id: classId,
+        user_id: tokenData.user_id,
         is_validated: tokenData.is_validated,
         message: "Token encontrado",
       } as TokenValidationResponse),

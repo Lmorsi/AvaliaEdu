@@ -165,25 +165,113 @@ export const useOMR = () => {
     []
   )
 
-  // Salva resultado do scan no Supabase
-  const saveGradingResult = useCallback(
-    async (studentId: string, assessmentId: string, answers: DetectedAnswers) => {
+  // Salva resultado OMR de um aluno individual diretamente no banco.
+  // Cria o assessment_grading se ainda não existir para esta avaliação/turma,
+  // e cria/atualiza o student_results correspondente.
+  const saveStudentOMRResult = useCallback(
+    async (params: {
+      userId: string
+      studentId: string
+      assessmentId: string
+      classId: string
+      assessmentName: string
+      answers: DetectedAnswers
+      answerKey: string[]
+      itemTypes: string[]
+      itemDescriptors: string[]
+      itemAlternatives: string[][]
+      itemGroups: number[][]
+      selectedItems: any[]
+    }): Promise<{ success: boolean; gradingId?: string; error?: string }> => {
       try {
-        const { error } = await supabase
+        const {
+          userId, studentId, assessmentId, classId,
+          assessmentName, answers, answerKey,
+          itemTypes, itemDescriptors, itemAlternatives, itemGroups, selectedItems,
+        } = params
+
+        // Converte Record<number, string> para string[] indexado
+        const answersArray: string[] = []
+        Object.entries(answers).forEach(([idx, letter]) => {
+          answersArray[parseInt(idx)] = letter
+        })
+
+        // Preenche posicoes vazias com string vazia
+        for (let i = 0; i < answerKey.length; i++) {
+          if (answersArray[i] === undefined) answersArray[i] = ''
+        }
+
+        // Calcula pontuacao
+        let correctCount = 0
+        let incorrectCount = 0
+        answerKey.forEach((correct, i) => {
+          const student = answersArray[i] || ''
+          if (student && student.toUpperCase() === correct.toUpperCase()) {
+            correctCount++
+          } else if (student) {
+            incorrectCount++
+          }
+        })
+        const score = answerKey.length > 0 ? (correctCount / answerKey.length) * 100 : 0
+
+        // Busca ou cria o assessment_grading para esta avaliacao+turma
+        const { data: existingGrading } = await supabase
           .from('assessment_gradings')
-          .insert({
-            student_id: studentId,
-            assessment_id: assessmentId,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
+          .select('id')
+          .eq('user_id', userId)
+          .eq('class_id', classId)
+          .eq('assessment_name', assessmentName)
+          .maybeSingle()
 
-        if (error) throw error
+        let gradingId: string
 
-        return true
+        if (existingGrading) {
+          gradingId = existingGrading.id
+        } else {
+          const { data: newGrading, error: gradingError } = await supabase
+            .from('assessment_gradings')
+            .insert({
+              user_id: userId,
+              class_id: classId,
+              assessment_name: assessmentName,
+              total_questions: answerKey.length,
+              answer_key: answerKey,
+              item_descriptors: itemDescriptors,
+              item_types: itemTypes,
+              item_alternatives: itemAlternatives,
+              item_groups: itemGroups,
+            })
+            .select('id')
+            .single()
+
+          if (gradingError || !newGrading) {
+            throw new Error(gradingError?.message || 'Falha ao criar registro de correção')
+          }
+          gradingId = newGrading.id
+        }
+
+        // Cria ou atualiza o resultado deste aluno (upsert por grading_id + student_id)
+        const { error: resultError } = await supabase
+          .from('student_results')
+          .upsert(
+            {
+              grading_id: gradingId,
+              student_id: studentId,
+              answers: answersArray,
+              score,
+              correct_count: correctCount,
+              incorrect_count: incorrectCount,
+            },
+            { onConflict: 'grading_id,student_id' }
+          )
+
+        if (resultError) throw new Error(resultError.message)
+
+        return { success: true, gradingId }
       } catch (err) {
-        console.error('Error saving grading result:', err)
-        return false
+        const message = err instanceof Error ? err.message : 'Erro desconhecido'
+        console.error('saveStudentOMRResult error:', message)
+        return { success: false, error: message }
       }
     },
     []
@@ -196,7 +284,7 @@ export const useOMR = () => {
     scanAnswerSheet,
     convertBubblesToAnswers,
     validateQRToken,
-    saveGradingResult,
+    saveStudentOMRResult,
     getOMRServiceUrl,
   }
 }

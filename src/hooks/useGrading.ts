@@ -171,25 +171,25 @@ export const useGrading = (userId: string | undefined, savedAssessments?: any[],
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialToken, userId, savedAssessments?.length])
 
-  // Pré-preencher respostas detectadas pelo OMR
+  // Pré-preencher respostas detectadas pelo OMR para o aluno identificado pelo token
   useEffect(() => {
     if (!detectedAnswers || Object.keys(detectedAnswers).length === 0) return
-    if (!gradingData.answerKey || gradingData.answerKey.length === 0) return
+    if (!tokenStudentId) return
 
-    const prefilledAnswers: Record<string, string[]> = {}
-
+    // Converte Record<number, string> (índice -> letra) para string[] (array indexado)
+    const answersArray: string[] = []
     Object.entries(detectedAnswers).forEach(([questionIndex, answer]) => {
       const qIdx = parseInt(questionIndex)
-      if (qIdx >= 0 && qIdx < gradingData.answerKey.length && answer) {
-        prefilledAnswers[`q${qIdx}`] = [answer]
+      if (qIdx >= 0 && answer) {
+        answersArray[qIdx] = answer
       }
     })
 
-    if (Object.keys(prefilledAnswers).length > 0) {
-      setStudentAnswers(prefilledAnswers)
-      console.log('Respostas OMR pré-preenchidas:', prefilledAnswers)
-    }
-  }, [detectedAnswers, gradingData.answerKey])
+    setStudentAnswers(prev => ({
+      ...prev,
+      [tokenStudentId]: answersArray,
+    }))
+  }, [detectedAnswers, tokenStudentId])
 
   const loadClasses = async () => {
     try {

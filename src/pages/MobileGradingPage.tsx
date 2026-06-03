@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { Camera, ArrowLeft, AlertCircle, Loader } from 'lucide-react'
+import { Camera, ArrowLeft, AlertCircle, Loader, CheckCircle, ScanLine } from 'lucide-react'
 import { useOMR } from '../hooks/useOMR'
+import { useAuth } from '../contexts/AuthContext'
 import { OMRResultModal } from '../components/modals/OMRResultModal'
+import { supabase } from '../lib/supabase'
 
 interface TokenData {
   token: string
@@ -11,25 +13,30 @@ interface TokenData {
   assessment_id: string
   assessment_name: string
   class_name: string
+  class_id: string
+  user_id: string
 }
 
 const MobileGradingPage: React.FC = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token')
+  const { user } = useAuth()
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [stage, setStage] = useState<'idle' | 'camera' | 'preview' | 'processing'>('idle')
+  const [stage, setStage] = useState<'idle' | 'camera' | 'preview' | 'processing' | 'saved'>('idle')
   const [preview, setPreview] = useState<string | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [tokenData, setTokenData] = useState<TokenData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isCameraActive, setIsCameraActive] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [savedGradingId, setSavedGradingId] = useState<string | null>(null)
 
-  const { loading, result, scanAnswerSheet, convertBubblesToAnswers, validateQRToken } = useOMR()
+  const { loading, result, scanAnswerSheet, validateQRToken, saveStudentOMRResult } = useOMR()
   const [showResultModal, setShowResultModal] = useState(false)
 
   // Validar token ao carregar página
@@ -50,6 +57,8 @@ const MobileGradingPage: React.FC = () => {
             assessment_id: validation.data.assessment_id,
             assessment_name: validation.data.assessment_name || 'Avaliação',
             class_name: validation.data.class_name || 'Turma',
+            class_id: validation.data.class_id || '',
+            user_id: validation.data.user_id || '',
           })
         } else {
           setError(validation.error || 'Token inválido')
@@ -63,43 +72,29 @@ const MobileGradingPage: React.FC = () => {
     validateToken()
   }, [token, validateQRToken])
 
-  // Inicia câmera
   const startCamera = useCallback(async () => {
     try {
       setError(null)
 
-      // Verifica se a API está disponível
       if (!navigator.mediaDevices?.getUserMedia) {
-        console.warn('getUserMedia não disponível, usando fallback para file input')
         fileInputRef.current?.click()
         return
       }
 
-      // Tenta com constraints simples primeiro (melhor compatibilidade iOS)
-      const constraints = {
-        video: {
-          facingMode: 'environment'
-        },
-        audio: false
-      }
-
-      console.log('Solicitando acesso à câmera...')
-      const stream = await navigator.mediaDevices.getUserMedia(constraints)
-      console.log('Stream obtido com sucesso')
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
+        audio: false,
+      })
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream
         videoRef.current.onloadedmetadata = () => {
-          videoRef.current?.play().catch(err => {
-            console.error('Erro ao reproduzir video:', err)
-          })
+          videoRef.current?.play().catch(console.error)
         }
         setIsCameraActive(true)
         setStage('camera')
       }
     } catch (err) {
-      console.error('Camera error:', err)
-
       let errorMsg = 'Não foi possível acessar a câmera'
       let showFileInput = false
 
@@ -117,29 +112,18 @@ const MobileGradingPage: React.FC = () => {
             errorMsg = 'Câmera ocupada. Feche outros apps e tente novamente.'
             showFileInput = true
             break
-          case 'SecurityError':
-            errorMsg = 'HTTPS obrigatório para acessar câmera.'
-            break
           default:
-            errorMsg = `Erro: ${err.message}`
+            errorMsg = `Erro: ${(err as Error).message}`
             showFileInput = true
         }
       }
 
       setError(errorMsg)
-
-      // Se falhou, abre o seletor de arquivo como fallback
-      if (showFileInput) {
-        setTimeout(() => {
-          fileInputRef.current?.click()
-        }, 500)
-      }
-
+      if (showFileInput) setTimeout(() => fileInputRef.current?.click(), 500)
       setStage('idle')
     }
   }, [])
 
-  // Para câmera
   const stopCamera = () => {
     if (videoRef.current?.srcObject) {
       const stream = videoRef.current.srcObject as MediaStream
@@ -148,7 +132,6 @@ const MobileGradingPage: React.FC = () => {
     }
   }
 
-  // Captura foto
   const capturePhoto = () => {
     if (videoRef.current && canvasRef.current) {
       const ctx = canvasRef.current.getContext('2d')
@@ -166,7 +149,6 @@ const MobileGradingPage: React.FC = () => {
     }
   }
 
-  // Processa arquivo
   const processFile = async (file: File) => {
     stopCamera()
     setSelectedFile(file)
@@ -178,25 +160,17 @@ const MobileGradingPage: React.FC = () => {
     reader.readAsDataURL(file)
   }
 
-  // Handler para upload de arquivo
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      processFile(file)
-    }
+    if (file) processFile(file)
   }
 
-  // Processa com OMR
   const handleProcessWithOMR = async () => {
     if (!selectedFile) return
-
-    console.log('Iniciando processamento OMR...')
     setStage('processing')
 
     try {
       const omrResult = await scanAnswerSheet(selectedFile, false)
-
-      console.log('Resultado OMR:', omrResult)
 
       if (!omrResult || !omrResult.success) {
         setError(`Erro ao processar imagem: ${omrResult?.error || 'Desconhecido'}`)
@@ -204,17 +178,13 @@ const MobileGradingPage: React.FC = () => {
         return
       }
 
-      // Se chegou aqui, mostra o modal
-      console.log('Mostrando modal de resultado')
       setShowResultModal(true)
     } catch (err) {
-      console.error('Erro durante processamento:', err)
       setError('Erro ao processar imagem. Tente novamente.')
       setStage('preview')
     }
   }
 
-  // Volta ao estado inicial
   const handleReset = () => {
     setStage('idle')
     setPreview(null)
@@ -222,22 +192,98 @@ const MobileGradingPage: React.FC = () => {
     setError(null)
   }
 
-  // Salvar e redirecionar para dashboard
+  // Salva resultado diretamente no banco após confirmação no modal
   const handleSaveAndGrade = async (answers: Record<number, string>) => {
-    if (!tokenData) return
+    if (!tokenData || !user) return
 
-    // Navega para dashboard com respostas detectadas
-    navigate('/dashboard', {
-      state: {
-        view: 'grading',
-        token: token,
-        detectedAnswers: answers,
+    setSaving(true)
+    try {
+      // Busca os dados completos da avaliação para montar gabarito/metadados
+      const { data: assessment } = await supabase
+        .from('assessments')
+        .select('*')
+        .eq('id', tokenData.assessment_id)
+        .maybeSingle()
+
+      // Monta answerKey e metadados a partir dos itens da avaliação
+      const answerKey: string[] = []
+      const itemTypes: string[] = []
+      const itemDescriptors: string[] = []
+      const itemAlternatives: string[][] = []
+      const itemGroups: number[][] = []
+      let answerIndex = 0
+
+      const selectedItems = assessment?.selected_items || assessment?.selectedItems || []
+      selectedItems.forEach((item: any) => {
+        const tipoItem = item.tipo_item || item.tipoItem
+        const descritor = item.descritor || ''
+
+        if (tipoItem === 'multipla_escolha') {
+          const correta = item.resposta_correta || item.respostaCorreta || ''
+          const alternativas = (item.alternativas || [])
+            .filter((a: string) => a && a.trim())
+            .map((_: string, idx: number) => String.fromCharCode(65 + idx))
+
+          answerKey.push(correta)
+          itemTypes.push('multipla_escolha')
+          itemDescriptors.push(descritor)
+          itemAlternatives.push(alternativas)
+          itemGroups.push([answerIndex])
+          answerIndex++
+        } else if (tipoItem === 'verdadeiro_falso') {
+          const afirmativas = [
+            ...(item.afirmativas || []),
+            ...(item.afirmativas_extras || item.afirmativasExtras || []),
+          ].filter((a: string) => a && a.trim())
+
+          const gabaritos = [
+            ...(item.gabarito_afirmativas || item.gabaritoAfirmativas || []),
+            ...(item.gabarito_afirmativas_extras || item.gabaritoAfirmativasExtras || []),
+          ].filter((_: string, idx: number) => {
+            return afirmativas[idx] && afirmativas[idx].trim()
+          })
+
+          const groupIndices: number[] = []
+          gabaritos.forEach((gabarito: string) => {
+            answerKey.push(gabarito)
+            itemTypes.push('verdadeiro_falso')
+            itemDescriptors.push(descritor)
+            itemAlternatives.push(['V', 'F'])
+            groupIndices.push(answerIndex)
+            answerIndex++
+          })
+          itemGroups.push(groupIndices)
+        }
+      })
+
+      const saveResult = await saveStudentOMRResult({
+        userId: user.id,
         studentId: tokenData.student_id,
-      },
-    })
+        assessmentId: tokenData.assessment_id,
+        classId: tokenData.class_id,
+        assessmentName: tokenData.assessment_name,
+        answers,
+        answerKey,
+        itemTypes,
+        itemDescriptors,
+        itemAlternatives,
+        itemGroups,
+        selectedItems,
+      })
+
+      if (!saveResult.success) {
+        setError(`Erro ao salvar: ${saveResult.error}`)
+        return
+      }
+
+      setSavedGradingId(saveResult.gradingId || null)
+      setShowResultModal(false)
+      setStage('saved')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  // Erro na validação do token
   if (error && !tokenData) {
     return (
       <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
@@ -256,7 +302,6 @@ const MobileGradingPage: React.FC = () => {
     )
   }
 
-  // Carregando
   if (!tokenData) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
@@ -277,14 +322,14 @@ const MobileGradingPage: React.FC = () => {
         </button>
         <div className="text-center">
           <h1 className="text-white font-semibold text-sm">{tokenData.student_name}</h1>
-          <p className="text-gray-400 text-xs">{tokenData.assessment_name}</p>
+          <p className="text-gray-400 text-xs">{tokenData.assessment_name} · {tokenData.class_name}</p>
         </div>
         <div className="w-5" />
       </header>
 
-      {/* Conteúdo */}
       <div className="flex-1 flex flex-col items-center justify-center px-4 py-8 space-y-6">
-        {/* Stage: Idle - Instruções */}
+
+        {/* Stage: Idle */}
         {stage === 'idle' && (
           <div className="w-full max-w-md space-y-6">
             <div className="text-center space-y-2">
@@ -343,7 +388,7 @@ const MobileGradingPage: React.FC = () => {
           </div>
         )}
 
-        {/* Stage: Camera - Video ao vivo */}
+        {/* Stage: Camera */}
         {stage === 'camera' && (
           <div className="w-full max-w-md space-y-4">
             <div className="space-y-2">
@@ -354,9 +399,7 @@ const MobileGradingPage: React.FC = () => {
                 muted
                 controls={false}
                 className="w-full rounded-xl bg-black border-2 border-green-500 aspect-video object-cover"
-                style={{
-                  WebkitPlaysinline: 'true'
-                } as React.CSSProperties}
+                style={{ WebkitPlaysinline: 'true' } as React.CSSProperties}
               />
               <p className="text-center text-gray-400 text-sm">
                 Posicione o gabarito com os marcadores fiduciais visíveis
@@ -370,10 +413,7 @@ const MobileGradingPage: React.FC = () => {
                 Capturar Foto
               </button>
               <button
-                onClick={() => {
-                  stopCamera()
-                  handleReset()
-                }}
+                onClick={() => { stopCamera(); handleReset() }}
                 className="flex-1 bg-gray-800 hover:bg-gray-700 active:scale-95 text-gray-300 py-3 px-4 rounded-lg transition"
               >
                 Cancelar
@@ -382,7 +422,7 @@ const MobileGradingPage: React.FC = () => {
           </div>
         )}
 
-        {/* Stage: Preview - Revisar imagem */}
+        {/* Stage: Preview */}
         {stage === 'preview' && preview && (
           <div className="w-full max-w-md space-y-4">
             <div className="space-y-2">
@@ -406,10 +446,7 @@ const MobileGradingPage: React.FC = () => {
                   Processar Gabarito
                 </button>
                 <button
-                  onClick={() => {
-                    handleReset()
-                    startCamera()
-                  }}
+                  onClick={() => { handleReset(); startCamera() }}
                   className="w-full bg-gray-800 hover:bg-gray-700 active:scale-95 text-gray-300 py-3 px-4 rounded-lg transition"
                 >
                   Tirar Outra Foto
@@ -426,11 +463,53 @@ const MobileGradingPage: React.FC = () => {
           </div>
         )}
 
-        {/* Stage: Processing - Aguardando resultado */}
+        {/* Stage: Processing */}
         {stage === 'processing' && (
           <div className="text-center space-y-4">
             <Loader className="w-12 h-12 animate-spin text-blue-600 mx-auto" />
             <p className="text-gray-300 font-medium">Processando gabarito...</p>
+          </div>
+        )}
+
+        {/* Stage: Saved - Confirmacao de sucesso */}
+        {stage === 'saved' && (
+          <div className="w-full max-w-md space-y-6 text-center">
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-20 h-20 rounded-full bg-green-900/40 border-2 border-green-500 flex items-center justify-center">
+                <CheckCircle className="w-10 h-10 text-green-400" />
+              </div>
+              <div>
+                <h2 className="text-white text-2xl font-bold">Gabarito Salvo!</h2>
+                <p className="text-gray-400 text-sm mt-1">
+                  Respostas de <span className="text-white font-medium">{tokenData.student_name}</span> registradas com sucesso.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 text-left space-y-2">
+              <p className="text-gray-400 text-xs font-medium uppercase tracking-wider">Detalhes</p>
+              <div className="space-y-1">
+                <p className="text-gray-300 text-sm"><span className="text-gray-500">Avaliação:</span> {tokenData.assessment_name}</p>
+                <p className="text-gray-300 text-sm"><span className="text-gray-500">Turma:</span> {tokenData.class_name}</p>
+                <p className="text-gray-300 text-sm"><span className="text-gray-500">Aluno:</span> {tokenData.student_name}</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <button
+                onClick={() => navigate('/scan')}
+                className="w-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white py-3 px-4 rounded-xl font-bold transition flex items-center justify-center gap-2"
+              >
+                <ScanLine className="w-5 h-5" />
+                Escanear Próximo Aluno
+              </button>
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="w-full bg-gray-800 hover:bg-gray-700 active:scale-95 text-gray-300 py-3 px-4 rounded-xl transition"
+              >
+                Ver Relatórios
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -440,6 +519,7 @@ const MobileGradingPage: React.FC = () => {
         <OMRResultModal
           result={result}
           tokenData={tokenData}
+          saving={saving}
           onSave={handleSaveAndGrade}
           onCancel={() => {
             setShowResultModal(false)
@@ -448,7 +528,6 @@ const MobileGradingPage: React.FC = () => {
         />
       )}
 
-      {/* Canvas oculto */}
       <canvas ref={canvasRef} className="hidden" />
     </div>
   )

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react'
-import { X, CreditCard as Edit2, Check, AlertCircle } from 'lucide-react'
+import { X, CreditCard as Edit2, Check, AlertCircle, Loader } from 'lucide-react'
 import { OMRResult } from '../../hooks/useOMR'
 
 interface TokenData {
@@ -9,11 +9,14 @@ interface TokenData {
   assessment_id: string
   assessment_name: string
   class_name: string
+  class_id?: string
+  user_id?: string
 }
 
 interface OMRResultModalProps {
   result: OMRResult
   tokenData: TokenData
+  saving?: boolean
   onSave: (answers: Record<number, string>) => void
   onCancel: () => void
 }
@@ -21,6 +24,7 @@ interface OMRResultModalProps {
 export const OMRResultModal: React.FC<OMRResultModalProps> = ({
   result,
   tokenData,
+  saving = false,
   onSave,
   onCancel,
 }) => {
@@ -210,16 +214,27 @@ export const OMRResultModal: React.FC<OMRResultModalProps> = ({
         <div className="border-t border-gray-800 px-4 py-4 bg-gray-900 flex gap-2 sticky bottom-0">
           <button
             onClick={onCancel}
-            className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 py-3 px-4 rounded-lg font-medium transition"
+            disabled={saving}
+            className="flex-1 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-gray-300 py-3 px-4 rounded-lg font-medium transition"
           >
             Cancelar
           </button>
           <button
             onClick={handleSave}
-            className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-lg font-bold transition flex items-center justify-center gap-2"
+            disabled={saving}
+            className="flex-1 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white py-3 px-4 rounded-lg font-bold transition flex items-center justify-center gap-2"
           >
-            <Check className="w-5 h-5" />
-            Salvar e Corrigir
+            {saving ? (
+              <>
+                <Loader className="w-5 h-5 animate-spin" />
+                Salvando...
+              </>
+            ) : (
+              <>
+                <Check className="w-5 h-5" />
+                Salvar e Corrigir
+              </>
+            )}
           </button>
         </div>
       </div>
