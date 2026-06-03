@@ -21,7 +21,6 @@ import MobileGradingPage from './pages/MobileGradingPage'
 import QRLandingPage from './pages/QRLandingPage'
 import CameraTestPage from './pages/CameraTestPage'
 import DebugPage from './pages/DebugPage'
-import TestTokenPage from './pages/TestTokenPage'
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth()
@@ -183,7 +182,6 @@ function App() {
           <Route path="/s/:token" element={<QRLandingPage />} />
           <Route path="/camera-test" element={<CameraTestPage />} />
           <Route path="/debug" element={<DebugPage />} />
-          <Route path="/test-token" element={<TestTokenPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>

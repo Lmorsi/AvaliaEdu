@@ -192,7 +192,6 @@ const MobileGradingPage: React.FC = () => {
 
     console.log('Iniciando processamento OMR...')
     setStage('processing')
-    setError(null)
 
     try {
       const omrResult = await scanAnswerSheet(selectedFile, false)
@@ -200,7 +199,7 @@ const MobileGradingPage: React.FC = () => {
       console.log('Resultado OMR:', omrResult)
 
       if (!omrResult || !omrResult.success) {
-        setError('Falha ao processar gabarito. Tente novamente.')
+        setError(`Erro ao processar imagem: ${omrResult?.error || 'Desconhecido'}`)
         setStage('preview')
         return
       }
@@ -210,7 +209,7 @@ const MobileGradingPage: React.FC = () => {
       setShowResultModal(true)
     } catch (err) {
       console.error('Erro durante processamento:', err)
-      setError('Erro ao processar gabarito. Tente novamente.')
+      setError('Erro ao processar imagem. Tente novamente.')
       setStage('preview')
     }
   }

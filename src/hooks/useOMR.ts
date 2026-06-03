@@ -45,26 +45,16 @@ export const useOMR = () => {
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<OMRResult | null>(null)
 
-  // Mock de resultado OMR para testes
-  const generateMockOMRResult = (): OMRResult => {
-    const grids: OMRGrid[] = []
-    for (let i = 0; i < 10; i++) {
-      grids.push({
-        row: i,
-        bubbles: [
-          { col: 0, x: 100, y: 100 + i * 50, radius: 15, fill_percentage: Math.random() > 0.5 ? 85 : 10, marked: Math.random() > 0.5 },
-          { col: 1, x: 200, y: 100 + i * 50, radius: 15, fill_percentage: Math.random() > 0.5 ? 85 : 10, marked: Math.random() > 0.5 },
-          { col: 2, x: 300, y: 100 + i * 50, radius: 15, fill_percentage: Math.random() > 0.5 ? 85 : 10, marked: Math.random() > 0.5 },
-          { col: 3, x: 400, y: 100 + i * 50, radius: 15, fill_percentage: Math.random() > 0.5 ? 85 : 10, marked: Math.random() > 0.5 },
-        ],
-      })
-    }
-    return {
-      success: true,
-      bubbles: { found: true, grids },
-      fiducial: { found: true, count: 4, corners: [[0, 0], [100, 0], [100, 100], [0, 100]] },
-    }
-  }
+  // Detecta OMR Service URL (local ou production)
+  const getOMRServiceUrl = useCallback(() => {
+    const urls = [
+      'http://localhost:8000',
+      'http://127.0.0.1:8000',
+      process.env.VITE_OMR_SERVICE_URL || '',
+    ].filter(Boolean)
+
+    return urls[0]
+  }, [])
 
   // Upload de imagem para processamento OMR
   const scanAnswerSheet = useCallback(
@@ -73,47 +63,39 @@ export const useOMR = () => {
         setLoading(true)
         setError(null)
 
-        // Converte arquivo para base64
-        const buffer = await file.arrayBuffer()
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)))
+        const formData = new FormData()
+        formData.append('photo', file)
+        formData.append('debug', debug.toString())
 
-        console.log('[OMR] Enviando para Edge Function...')
-
-        const response = await supabase.functions.invoke('scan-omr', {
-          body: {
-            photo: base64,
-            filename: file.name,
-            debug: debug.toString(),
-          },
-        })
-
-        console.log('[OMR] Resposta:', response)
-
-        // Se sucesso, retorna resultado real
-        if (!response.error && response.data?.success) {
-          setResult(response.data)
-          return response.data
+        const omrUrl = getOMRServiceUrl()
+        if (!omrUrl) {
+          throw new Error('OMR Service URL not configured')
         }
 
-        // Se falhou, tenta usar mock para testes
-        console.warn('[OMR] Edge Function falhou, usando mock para teste...')
-        const mockResult = generateMockOMRResult()
-        setResult(mockResult)
-        return mockResult
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Erro desconhecido'
-        console.error('[OMR] Erro:', message)
+        const response = await fetch(`${omrUrl}/api/omr/scan`, {
+          method: 'POST',
+          body: formData,
+          signal: AbortSignal.timeout(30000), // 30 segundos
+        })
 
-        // Usa mock como fallback
-        console.warn('[OMR] Usando mock para teste...')
-        const mockResult = generateMockOMRResult()
-        setResult(mockResult)
-        return mockResult
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || `OMR Service error: ${response.statusText}`)
+        }
+
+        const data: OMRResult = await response.json()
+        setResult(data)
+        return data
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error'
+        setError(message)
+        console.error('OMR scan error:', message)
+        return null
       } finally {
         setLoading(false)
       }
     },
-    []
+    [getOMRServiceUrl]
   )
 
   // Converte resultado OMR em matriz de respostas
@@ -215,5 +197,6 @@ export const useOMR = () => {
     convertBubblesToAnswers,
     validateQRToken,
     saveGradingResult,
+    getOMRServiceUrl,
   }
 }
