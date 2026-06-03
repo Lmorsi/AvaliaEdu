@@ -172,8 +172,8 @@ const MobileGradingPage: React.FC = () => {
     try {
       const omrResult = await scanAnswerSheet(selectedFile, false)
 
-      if (!omrResult || !omrResult.success) {
-        setError(`Erro ao processar imagem: ${omrResult?.error || 'Desconhecido'}`)
+      if (!omrResult.success) {
+        setError(omrResult.error || 'Erro ao processar imagem.')
         setStage('preview')
         return
       }

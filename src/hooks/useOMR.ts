@@ -47,18 +47,22 @@ export const useOMR = () => {
 
   // Detecta OMR Service URL (local ou production)
   const getOMRServiceUrl = useCallback(() => {
-    const urls = [
-      'http://localhost:8000',
-      'http://127.0.0.1:8000',
-      process.env.VITE_OMR_SERVICE_URL || '',
-    ].filter(Boolean)
+    // URL configurada via variável de ambiente tem prioridade
+    const envUrl = import.meta.env.VITE_OMR_SERVICE_URL as string | undefined
+    if (envUrl) return envUrl
 
-    return urls[0]
+    // Se rodando em localhost, tenta o serviço local
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      return 'http://localhost:8000'
+    }
+
+    // Em produção, usa a URL do Railway
+    return 'https://avaliaedu-omr.up.railway.app'
   }, [])
 
   // Upload de imagem para processamento OMR
   const scanAnswerSheet = useCallback(
-    async (file: File, debug: boolean = false): Promise<OMRResult | null> => {
+    async (file: File, debug: boolean = false): Promise<OMRResult> => {
       try {
         setLoading(true)
         setError(null)
@@ -68,29 +72,41 @@ export const useOMR = () => {
         formData.append('debug', debug.toString())
 
         const omrUrl = getOMRServiceUrl()
-        if (!omrUrl) {
-          throw new Error('OMR Service URL not configured')
-        }
 
         const response = await fetch(`${omrUrl}/api/omr/scan`, {
           method: 'POST',
           body: formData,
-          signal: AbortSignal.timeout(30000), // 30 segundos
+          signal: AbortSignal.timeout(30000),
         })
 
         if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.error || `OMR Service error: ${response.statusText}`)
+          let errorMsg = `Serviço OMR retornou erro ${response.status}`
+          try {
+            const errorData = await response.json()
+            errorMsg = errorData.error || errorData.detail || errorMsg
+          } catch { /* ignora erro de parse */ }
+          const result: OMRResult = { success: false, error: errorMsg }
+          setResult(result)
+          return result
         }
 
         const data: OMRResult = await response.json()
         setResult(data)
         return data
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Unknown error'
+        const isAbort = err instanceof DOMException && err.name === 'AbortError'
+        const isNetwork = err instanceof TypeError && err.message.includes('fetch')
+        let message: string
+        if (isAbort) {
+          message = 'Tempo limite excedido ao conectar ao serviço de leitura de gabaritos.'
+        } else if (isNetwork) {
+          message = 'Serviço de leitura de gabaritos não está acessível. Verifique se o servidor OMR está em execução.'
+        } else {
+          message = err instanceof Error ? err.message : 'Erro desconhecido'
+        }
         setError(message)
         console.error('OMR scan error:', message)
-        return null
+        return { success: false, error: message }
       } finally {
         setLoading(false)
       }
