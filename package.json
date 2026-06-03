@@ -5,13 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.107.0",
     "axios": "^1.16.1",
+    "lucide-react": "^0.263.1",
     "qrcode.js": "^0.0.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
