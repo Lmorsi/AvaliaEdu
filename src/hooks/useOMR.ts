@@ -57,7 +57,7 @@ export const useOMR = () => {
     }
 
     // Em produção, usa a URL do Railway
-    return 'https://avaliaedu-omr.up.railway.app'
+    return 'https://avaliaedu-production-00be.up.railway.app'
   }, [])
 
   // Upload de imagem para processamento OMR
