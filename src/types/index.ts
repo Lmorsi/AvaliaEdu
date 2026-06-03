@@ -14,12 +14,25 @@ export interface StudentAssessment {
   token: string;
 }
 
+// Formato real retornado pelo OMR service (scan-omr edge function)
+export interface OMRGrid {
+  row: number;
+  bubbles: Array<{
+    col: number;
+    x: number;
+    y: number;
+    radius: number;
+    fill_percentage: number;
+    marked: boolean;
+  }>;
+}
+
 export interface OMRResult {
   success: boolean;
   error?: string;
   qr?: {
     raw: string;
-    token: string;
+    token: string | null;
     format: string;
   };
   fiducial?: {
@@ -33,23 +46,8 @@ export interface OMRResult {
   };
   corrected_image?: string;
   debug_image?: string;
+  // Respostas já convertidas (quando retornadas pelo process-answer-sheet)
   answers?: Record<string, string>;
-}
-
-export interface OMRGrid {
-  x: number;
-  y: number;
-  rows: number;
-  cols: number;
-  bubbles: Bubble[];
-}
-
-export interface Bubble {
-  id: string;
-  question: number;
-  option: string;
-  marked: boolean;
-  confidence: number;
 }
 
 export interface GradingResult {
