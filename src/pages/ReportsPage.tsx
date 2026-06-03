@@ -1,49 +1,122 @@
-import { useState } from 'react';
-import { CompiledReportViewer } from '@/components/CompiledReportViewer';
+import { useState, useEffect } from 'react';
+import { ChartBar as FileBarChart, Download, Eye } from 'lucide-react';
+import { supabase } from '../services/supabase';
+import { CompiledReportViewer } from '../components/CompiledReportViewer';
 
-// Exemplo de uso da página de relatório compilado
+interface GradingRecord {
+  id: string;
+  assessment_name: string;
+  total_questions: number;
+  grading_date: string;
+  created_at: string;
+}
+
 export function ReportsPage() {
-  const [selectedAssessmentId, setSelectedAssessmentId] = useState<string | null>(null);
-  const [assessmentTitle, setAssessmentTitle] = useState('');
+  const [gradings, setGradings] = useState<GradingRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedGradingId, setSelectedGradingId] = useState<string | null>(null);
 
-  const handleSelectAssessment = (id: string, title: string) => {
-    setSelectedAssessmentId(id);
-    setAssessmentTitle(title);
+  useEffect(() => {
+    loadGradings();
+  }, []);
+
+  const loadGradings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('assessment_gradings')
+        .select('id, assessment_name, total_questions, grading_date, created_at')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setGradings(data || []);
+    } catch (err) {
+      console.error('Error loading gradings:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">Relatórios de Avaliações</h1>
+  if (selectedGradingId) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#f8fafc', padding: '2rem', fontFamily: 'system-ui, sans-serif' }}>
+        <div style={{ maxWidth: 900, margin: '0 auto' }}>
+          <button
+            onClick={() => setSelectedGradingId(null)}
+            style={{ marginBottom: 16, padding: '8px 16px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, cursor: 'pointer', fontSize: 14, color: '#475569' }}
+          >
+            Voltar para Relatorios
+          </button>
+          <CompiledReportViewer
+            gradingId={selectedGradingId}
+            onClose={() => setSelectedGradingId(null)}
+          />
+        </div>
+      </div>
+    );
+  }
 
-        {selectedAssessmentId ? (
+  return (
+    <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'system-ui, sans-serif' }}>
+      <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '1.5rem 2rem' }}>
+        <div style={{ maxWidth: 900, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <FileBarChart size={24} color="#2563eb" />
           <div>
-            <button
-              onClick={() => setSelectedAssessmentId(null)}
-              className="mb-6 px-4 py-2 text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-100 transition-colors"
-            >
-              Voltar para seleção
-            </button>
-            <CompiledReportViewer assessmentId={selectedAssessmentId} assessmentTitle={assessmentTitle} />
+            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#1e293b' }}>Relatorios</h1>
+            <p style={{ margin: 0, fontSize: 13, color: '#64748b' }}>Visualize e exporte relatorios de correcoes</p>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ maxWidth: 900, margin: '0 auto', padding: '2rem' }}>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8' }}>Carregando...</div>
+        ) : gradings.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8', background: '#fff', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <FileBarChart size={48} style={{ marginBottom: 12, opacity: 0.4 }} />
+            <p style={{ margin: 0, fontSize: 14 }}>Nenhuma correcao encontrada.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Exemplo de assessments - substitua com dados reais do Supabase */}
-            <div
-              onClick={() => handleSelectAssessment('assessment-1', 'Prova de Matemática')}
-              className="bg-white rounded-lg border border-gray-200 p-6 cursor-pointer hover:shadow-lg hover:border-blue-300 transition-all"
-            >
-              <h3 className="font-semibold text-gray-900 mb-2">Prova de Matemática</h3>
-              <p className="text-gray-600 text-sm">Clique para visualizar relatório</p>
-            </div>
-
-            <div
-              onClick={() => handleSelectAssessment('assessment-2', 'Prova de Português')}
-              className="bg-white rounded-lg border border-gray-200 p-6 cursor-pointer hover:shadow-lg hover:border-blue-300 transition-all"
-            >
-              <h3 className="font-semibold text-gray-900 mb-2">Prova de Português</h3>
-              <p className="text-gray-600 text-sm">Clique para visualizar relatório</p>
-            </div>
+          <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc' }}>
+                  {['Avaliacao', 'Questoes', 'Data', 'Acoes'].map(h => (
+                    <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {gradings.map(g => (
+                  <tr key={g.id} style={{ borderTop: '1px solid #e2e8f0' }}>
+                    <td style={{ padding: '12px 16px', fontSize: 14, fontWeight: 500, color: '#1e293b' }}>{g.assessment_name}</td>
+                    <td style={{ padding: '12px 16px', fontSize: 14, color: '#475569' }}>{g.total_questions}</td>
+                    <td style={{ padding: '12px 16px', fontSize: 14, color: '#475569' }}>
+                      {g.grading_date ? new Date(g.grading_date).toLocaleDateString('pt-BR') : 'N/A'}
+                    </td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          onClick={() => setSelectedGradingId(g.id)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px', background: '#eff6ff', color: '#2563eb', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 500 }}
+                        >
+                          <Eye size={12} />
+                          Ver
+                        </button>
+                        <button
+                          onClick={() => window.print()}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 500 }}
+                        >
+                          <Download size={12} />
+                          PDF
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
