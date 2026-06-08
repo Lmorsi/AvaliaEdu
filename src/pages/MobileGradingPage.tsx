@@ -35,6 +35,9 @@ const MobileGradingPage: React.FC = () => {
   const [isCameraActive, setIsCameraActive] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedGradingId, setSavedGradingId] = useState<string | null>(null)
+  // When true, the QR token will be extracted from the scanned image instead of the URL
+  const [autoIdentifyFromPhoto, setAutoIdentifyFromPhoto] = useState(false)
+  const nextStudentInputRef = useRef<HTMLInputElement>(null)
 
   const { loading, result, scanAnswerSheet, validateQRToken, saveStudentOMRResult } = useOMR()
   const [showResultModal, setShowResultModal] = useState(false)
@@ -178,6 +181,31 @@ const MobileGradingPage: React.FC = () => {
         return
       }
 
+      // When scanning a subsequent student, identify them from the QR in the photo
+      if (autoIdentifyFromPhoto) {
+        const qrToken = omrResult.qr?.token
+        if (!qrToken) {
+          setError('QR Code do aluno não encontrado na imagem. Verifique se o gabarito tem o QR Code visível.')
+          setStage('preview')
+          return
+        }
+
+        const validation = await validateQRToken(qrToken)
+        if (!validation.valid || !validation.data) {
+          setError(validation.error || 'QR Code inválido ou expirado.')
+          setStage('preview')
+          return
+        }
+
+        // Keep assessment/class context but update student identity
+        setTokenData((prev) => prev ? {
+          ...prev,
+          token: qrToken,
+          student_id: validation.data.student_id,
+          student_name: validation.data.student_name || 'Aluno',
+        } : prev)
+      }
+
       setShowResultModal(true)
     } catch (err) {
       setError('Erro ao processar imagem. Tente novamente.')
@@ -190,7 +218,20 @@ const MobileGradingPage: React.FC = () => {
     setPreview(null)
     setSelectedFile(null)
     setError(null)
+    setAutoIdentifyFromPhoto(false)
   }
+
+  // Opens camera to scan the next student's sheet without leaving the page.
+  // The QR code in the photo will be used to identify the student automatically.
+  const handleScanNextStudent = useCallback(() => {
+    setStage('idle')
+    setPreview(null)
+    setSelectedFile(null)
+    setError(null)
+    setAutoIdentifyFromPhoto(true)
+    // Trigger camera after state updates propagate
+    setTimeout(() => nextStudentInputRef.current?.click(), 50)
+  }, [])
 
   // Salva resultado diretamente no banco após confirmação no modal
   const handleSaveAndGrade = async (answers: Record<number, string>) => {
@@ -479,12 +520,22 @@ const MobileGradingPage: React.FC = () => {
             </div>
 
             <button
-              onClick={() => navigate('/scan')}
+              onClick={handleScanNextStudent}
               className="w-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white py-3 px-4 rounded-xl font-bold transition flex items-center justify-center gap-2"
             >
               <ScanLine className="w-5 h-5" />
               Escanear Próximo Aluno
             </button>
+
+            {/* Hidden input to capture next student's sheet directly */}
+            <input
+              ref={nextStudentInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleFileChange}
+              className="hidden"
+            />
           </div>
         )}
       </div>
