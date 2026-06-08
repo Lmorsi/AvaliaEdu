@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { Camera, ArrowLeft, AlertCircle, Loader, CheckCircle, ScanLine } from 'lucide-react'
-import { useOMR } from '../hooks/useOMR'
+import { Camera, ArrowLeft, AlertCircle, Loader, CheckCircle, ScanLine, Zap } from 'lucide-react'
+import { useOMR, OMRResult } from '../hooks/useOMR'
 import { useAuth } from '../contexts/AuthContext'
 import { OMRResultModal } from '../components/modals/OMRResultModal'
 import { supabase } from '../lib/supabase'
@@ -17,15 +17,21 @@ interface TokenData {
   user_id: string
 }
 
+type BgScanState = 'idle' | 'scanning' | 'done' | 'error'
+
 const MobileGradingPage: React.FC = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token')
   const { user } = useAuth()
 
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  // Ref espelha tokenData para que handleSaveAndGrade nunca use closure desatualizado
+  const tokenDataRef = useRef<TokenData | null>(null)
+  // Promessa do scan em segundo plano — usada quando usuário clica antes do fim
+  const bgScanPromiseRef = useRef<Promise<OMRResult> | null>(null)
 
   const [stage, setStage] = useState<'idle' | 'camera' | 'preview' | 'processing' | 'saved'>('idle')
   const [preview, setPreview] = useState<string | null>(null)
@@ -35,14 +41,21 @@ const MobileGradingPage: React.FC = () => {
   const [isCameraActive, setIsCameraActive] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedGradingId, setSavedGradingId] = useState<string | null>(null)
-  // When true, the QR token will be extracted from the scanned image instead of the URL
   const [autoIdentifyFromPhoto, setAutoIdentifyFromPhoto] = useState(false)
-  const nextStudentInputRef = useRef<HTMLInputElement>(null)
-
-  const { loading, result, scanAnswerSheet, validateQRToken, saveStudentOMRResult } = useOMR()
   const [showResultModal, setShowResultModal] = useState(false)
 
-  // Validar token ao carregar página
+  // Estado do scan em segundo plano
+  const [bgScanState, setBgScanState] = useState<BgScanState>('idle')
+  const [bgScanResult, setBgScanResult] = useState<OMRResult | null>(null)
+
+  const { validateQRToken, saveStudentOMRResult, scanAnswerSheetBackground } = useOMR()
+
+  // Mantém ref sempre sincronizada com o estado
+  useEffect(() => {
+    tokenDataRef.current = tokenData
+  }, [tokenData])
+
+  // Valida token ao carregar página
   useEffect(() => {
     if (!token) {
       setError('Token não fornecido')
@@ -53,7 +66,7 @@ const MobileGradingPage: React.FC = () => {
       try {
         const validation = await validateQRToken(token)
         if (validation.valid && validation.data) {
-          setTokenData({
+          const td: TokenData = {
             token,
             student_id: validation.data.student_id,
             student_name: validation.data.student_name || 'Aluno',
@@ -62,7 +75,9 @@ const MobileGradingPage: React.FC = () => {
             class_name: validation.data.class_name || 'Turma',
             class_id: validation.data.class_id || '',
             user_id: validation.data.user_id || '',
-          })
+          }
+          setTokenData(td)
+          tokenDataRef.current = td
         } else {
           setError(validation.error || 'Token inválido')
         }
@@ -75,20 +90,25 @@ const MobileGradingPage: React.FC = () => {
     validateToken()
   }, [token, validateQRToken])
 
+  const stopCamera = () => {
+    if (videoRef.current?.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream
+      stream.getTracks().forEach((track) => track.stop())
+      setIsCameraActive(false)
+    }
+  }
+
   const startCamera = useCallback(async () => {
     try {
       setError(null)
-
       if (!navigator.mediaDevices?.getUserMedia) {
         fileInputRef.current?.click()
         return
       }
-
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment' },
         audio: false,
       })
-
       if (videoRef.current) {
         videoRef.current.srcObject = stream
         videoRef.current.onloadedmetadata = () => {
@@ -99,41 +119,26 @@ const MobileGradingPage: React.FC = () => {
       }
     } catch (err) {
       let errorMsg = 'Não foi possível acessar a câmera'
-      let showFileInput = false
-
       if (err instanceof DOMException) {
         switch (err.name) {
           case 'NotAllowedError':
             errorMsg = 'Permissão negada. Use o botão abaixo para escolher uma foto.'
-            showFileInput = true
             break
           case 'NotFoundError':
             errorMsg = 'Câmera não encontrada. Use o botão abaixo para escolher uma foto.'
-            showFileInput = true
             break
           case 'NotReadableError':
             errorMsg = 'Câmera ocupada. Feche outros apps e tente novamente.'
-            showFileInput = true
             break
           default:
             errorMsg = `Erro: ${(err as Error).message}`
-            showFileInput = true
         }
       }
-
       setError(errorMsg)
-      if (showFileInput) setTimeout(() => fileInputRef.current?.click(), 500)
+      setTimeout(() => fileInputRef.current?.click(), 500)
       setStage('idle')
     }
   }, [])
-
-  const stopCamera = () => {
-    if (videoRef.current?.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream
-      stream.getTracks().forEach((track) => track.stop())
-      setIsCameraActive(false)
-    }
-  }
 
   const capturePhoto = () => {
     if (videoRef.current && canvasRef.current) {
@@ -152,13 +157,36 @@ const MobileGradingPage: React.FC = () => {
     }
   }
 
-  const processFile = async (file: File) => {
+  // Inicia o scan em segundo plano e retorna a promessa
+  const startBackgroundScan = useCallback((file: File) => {
+    setBgScanState('scanning')
+    setBgScanResult(null)
+    const promise = scanAnswerSheetBackground(file).then((omrResult) => {
+      setBgScanResult(omrResult)
+      setBgScanState(omrResult.success ? 'done' : 'error')
+      if (!omrResult.success) {
+        setError(omrResult.error || 'Erro ao processar imagem.')
+      }
+      return omrResult
+    })
+    bgScanPromiseRef.current = promise
+    return promise
+  }, [scanAnswerSheetBackground])
+
+  const processFile = (file: File) => {
     stopCamera()
     setSelectedFile(file)
+    setError(null)
+    setBgScanResult(null)
+    setBgScanState('idle')
+    bgScanPromiseRef.current = null
+
     const reader = new FileReader()
     reader.onload = (e) => {
       setPreview(e.target?.result as string)
       setStage('preview')
+      // Inicia scan em segundo plano assim que preview é mostrado
+      startBackgroundScan(file)
     }
     reader.readAsDataURL(file)
   }
@@ -166,51 +194,8 @@ const MobileGradingPage: React.FC = () => {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) processFile(file)
-  }
-
-  const handleProcessWithOMR = async () => {
-    if (!selectedFile) return
-    setStage('processing')
-
-    try {
-      const omrResult = await scanAnswerSheet(selectedFile, false)
-
-      if (!omrResult.success) {
-        setError(omrResult.error || 'Erro ao processar imagem.')
-        setStage('preview')
-        return
-      }
-
-      // When scanning a subsequent student, identify them from the QR in the photo
-      if (autoIdentifyFromPhoto) {
-        const qrToken = omrResult.qr?.token
-        if (!qrToken) {
-          setError('QR Code do aluno não encontrado na imagem. Verifique se o gabarito tem o QR Code visível.')
-          setStage('preview')
-          return
-        }
-
-        const validation = await validateQRToken(qrToken)
-        if (!validation.valid || !validation.data) {
-          setError(validation.error || 'QR Code inválido ou expirado.')
-          setStage('preview')
-          return
-        }
-
-        // Keep assessment/class context but update student identity
-        setTokenData((prev) => prev ? {
-          ...prev,
-          token: qrToken,
-          student_id: validation.data.student_id,
-          student_name: validation.data.student_name || 'Aluno',
-        } : prev)
-      }
-
-      setShowResultModal(true)
-    } catch (err) {
-      setError('Erro ao processar imagem. Tente novamente.')
-      setStage('preview')
-    }
+    // Reseta o input para permitir reuso
+    e.target.value = ''
   }
 
   const handleReset = () => {
@@ -219,34 +204,103 @@ const MobileGradingPage: React.FC = () => {
     setSelectedFile(null)
     setError(null)
     setAutoIdentifyFromPhoto(false)
+    setBgScanState('idle')
+    setBgScanResult(null)
+    bgScanPromiseRef.current = null
   }
 
-  // Opens camera to scan the next student's sheet without leaving the page.
-  // The QR code in the photo will be used to identify the student automatically.
+  const handleProcessWithOMR = async () => {
+    if (!selectedFile) return
+    setError(null)
+
+    // Se o scan em segundo plano ainda está rodando, mostra spinner e aguarda
+    let omrResult: OMRResult
+    if (bgScanResult !== null) {
+      omrResult = bgScanResult
+    } else {
+      setStage('processing')
+      try {
+        if (bgScanPromiseRef.current) {
+          omrResult = await bgScanPromiseRef.current
+        } else {
+          // Fallback: inicia scan agora se não foi iniciado (não deveria acontecer)
+          omrResult = await scanAnswerSheetBackground(selectedFile)
+        }
+      } catch {
+        setError('Erro ao processar imagem. Tente novamente.')
+        setStage('preview')
+        return
+      }
+    }
+
+    if (!omrResult.success) {
+      setError(omrResult.error || 'Erro ao processar imagem.')
+      setStage('preview')
+      return
+    }
+
+    // Ao escanear próximo aluno, identifica o estudante pelo QR da foto
+    if (autoIdentifyFromPhoto) {
+      const qrToken = omrResult.qr?.token
+      if (!qrToken) {
+        setError('QR Code do aluno não encontrado na imagem. Verifique se o gabarito tem o QR Code visível.')
+        setStage('preview')
+        return
+      }
+
+      const validation = await validateQRToken(qrToken)
+      if (!validation.valid || !validation.data) {
+        setError(validation.error || 'QR Code inválido ou expirado.')
+        setStage('preview')
+        return
+      }
+
+      // Atualiza identidade do aluno mantendo contexto da avaliação/turma
+      const currentTokenData = tokenDataRef.current
+      if (currentTokenData) {
+        const newTokenData: TokenData = {
+          ...currentTokenData,
+          token: qrToken,
+          student_id: validation.data.student_id,
+          student_name: validation.data.student_name || 'Aluno',
+        }
+        // Atualiza ref imediatamente (sem esperar re-render) para evitar closure stale
+        tokenDataRef.current = newTokenData
+        setTokenData(newTokenData)
+      }
+    }
+
+    setBgScanResult(omrResult)
+    setShowResultModal(true)
+    setStage('preview')
+  }
+
   const handleScanNextStudent = useCallback(() => {
     setStage('idle')
     setPreview(null)
     setSelectedFile(null)
     setError(null)
     setAutoIdentifyFromPhoto(true)
-    // Trigger camera after state updates propagate
-    setTimeout(() => nextStudentInputRef.current?.click(), 50)
+    setBgScanState('idle')
+    setBgScanResult(null)
+    bgScanPromiseRef.current = null
+    // Pequeno delay para garantir que os estados foram aplicados antes de abrir câmera
+    setTimeout(() => fileInputRef.current?.click(), 50)
   }, [])
 
-  // Salva resultado diretamente no banco após confirmação no modal
   const handleSaveAndGrade = async (answers: Record<number, string>) => {
-    if (!tokenData || !user) return
+    // Usa ref para garantir dados mais recentes independente do ciclo de render
+    const currentTokenData = tokenDataRef.current
+    if (!currentTokenData || !user) return
 
     setSaving(true)
     try {
-      // Busca os dados completos da avaliação para montar gabarito/metadados
       const { data: assessment } = await supabase
         .from('assessments')
         .select('*')
-        .eq('id', tokenData.assessment_id)
+        .eq('id', currentTokenData.assessment_id)
         .maybeSingle()
 
-      // Monta answerKey e metadados a partir dos itens da avaliação
       const answerKey: string[] = []
       const itemTypes: string[] = []
       const itemDescriptors: string[] = []
@@ -280,9 +334,7 @@ const MobileGradingPage: React.FC = () => {
           const gabaritos = [
             ...(item.gabarito_afirmativas || item.gabaritoAfirmativas || []),
             ...(item.gabarito_afirmativas_extras || item.gabaritoAfirmativasExtras || []),
-          ].filter((_: string, idx: number) => {
-            return afirmativas[idx] && afirmativas[idx].trim()
-          })
+          ].filter((_: string, idx: number) => afirmativas[idx] && afirmativas[idx].trim())
 
           const groupIndices: number[] = []
           gabaritos.forEach((gabarito: string) => {
@@ -298,11 +350,11 @@ const MobileGradingPage: React.FC = () => {
       })
 
       const saveResult = await saveStudentOMRResult({
-        userId: user.id,
-        studentId: tokenData.student_id,
-        assessmentId: tokenData.assessment_id,
-        classId: tokenData.class_id,
-        assessmentName: tokenData.assessment_name,
+        userId: user.id!,
+        studentId: currentTokenData.student_id,
+        assessmentId: currentTokenData.assessment_id,
+        classId: currentTokenData.class_id,
+        assessmentName: currentTokenData.assessment_name,
         answers,
         answerKey,
         itemTypes,
@@ -354,7 +406,7 @@ const MobileGradingPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col">
       {/* Header */}
-      <header className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between sticky top-0">
+      <header className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
         <button
           onClick={() => navigate('/scan')}
           className="flex items-center text-gray-400 hover:text-white transition"
@@ -363,7 +415,7 @@ const MobileGradingPage: React.FC = () => {
         </button>
         <div className="text-center">
           <h1 className="text-white font-semibold text-sm">
-            {autoIdentifyFromPhoto ? 'Identificando aluno...' : tokenData.student_name}
+            {autoIdentifyFromPhoto && stage !== 'saved' ? 'Identificando aluno...' : tokenData.student_name}
           </h1>
           <p className="text-gray-400 text-xs">{tokenData.assessment_name} · {tokenData.class_name}</p>
         </div>
@@ -456,20 +508,37 @@ const MobileGradingPage: React.FC = () => {
               <img src={preview} alt="Preview" className="w-full rounded-xl border-2 border-gray-700" />
             </div>
 
-            {loading && (
-              <div className="bg-blue-900/30 border border-blue-500 rounded-lg p-4 flex items-center gap-3">
-                <Loader className="w-5 h-5 animate-spin text-blue-500" />
-                <span className="text-blue-300 font-medium text-sm">Processando imagem...</span>
+            {/* Indicador de processamento em segundo plano */}
+            {bgScanState === 'scanning' && (
+              <div className="bg-blue-900/30 border border-blue-700 rounded-lg p-3 flex items-center gap-3">
+                <Loader className="w-4 h-4 animate-spin text-blue-400 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-blue-300 text-sm font-medium">Analisando gabarito...</p>
+                  <p className="text-blue-400/70 text-xs">O resultado estará pronto em instantes</p>
+                </div>
               </div>
             )}
 
-            {!loading && (
+            {bgScanState === 'done' && (
+              <div className="bg-green-900/20 border border-green-700 rounded-lg p-3 flex items-center gap-3">
+                <Zap className="w-4 h-4 text-green-400 flex-shrink-0" />
+                <p className="text-green-300 text-sm font-medium">Análise concluída — resultado pronto!</p>
+              </div>
+            )}
+
+            {!showResultModal && (
               <div className="space-y-2">
                 <button
                   onClick={handleProcessWithOMR}
-                  className="w-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white py-3 px-4 rounded-lg font-medium transition"
+                  disabled={bgScanState === 'idle'}
+                  className={`w-full text-white py-3 px-4 rounded-lg font-medium transition flex items-center justify-center gap-2 ${
+                    bgScanState === 'done'
+                      ? 'bg-green-600 hover:bg-green-700 active:scale-95'
+                      : 'bg-blue-600 hover:bg-blue-700 active:scale-95'
+                  }`}
                 >
-                  Processar Gabarito
+                  {bgScanState === 'scanning' && <Loader className="w-4 h-4 animate-spin" />}
+                  {bgScanState === 'done' ? 'Ver Resultado' : 'Processar Gabarito'}
                 </button>
                 <button
                   onClick={() => { handleReset(); startCamera() }}
@@ -480,16 +549,24 @@ const MobileGradingPage: React.FC = () => {
               </div>
             )}
 
-            {error && (
+            {error && !showResultModal && (
               <div className="bg-red-900/30 border border-red-600 rounded-lg p-3 flex gap-2">
                 <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-                <p className="text-red-300 text-sm">{error}</p>
+                <div>
+                  <p className="text-red-300 text-sm">{error}</p>
+                  <button
+                    onClick={() => { handleReset() }}
+                    className="text-red-400 text-xs underline mt-1"
+                  >
+                    Tirar outra foto
+                  </button>
+                </div>
               </div>
             )}
           </div>
         )}
 
-        {/* Stage: Processing */}
+        {/* Stage: Processing (aguardando scan que ainda estava em andamento) */}
         {stage === 'processing' && (
           <div className="text-center space-y-4">
             <Loader className="w-12 h-12 animate-spin text-blue-600 mx-auto" />
@@ -498,7 +575,7 @@ const MobileGradingPage: React.FC = () => {
           </div>
         )}
 
-        {/* Stage: Saved - Confirmacao de sucesso */}
+        {/* Stage: Saved */}
         {stage === 'saved' && (
           <div className="w-full max-w-md space-y-6 text-center">
             <div className="flex flex-col items-center gap-4">
@@ -529,24 +606,14 @@ const MobileGradingPage: React.FC = () => {
               <ScanLine className="w-5 h-5" />
               Escanear Próximo Aluno
             </button>
-
-            {/* Hidden input to capture next student's sheet directly */}
-            <input
-              ref={nextStudentInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handleFileChange}
-              className="hidden"
-            />
           </div>
         )}
       </div>
 
       {/* Modal de Resultado */}
-      {showResultModal && result && (
+      {showResultModal && bgScanResult && (
         <OMRResultModal
-          result={result}
+          result={bgScanResult}
           tokenData={tokenData}
           saving={saving}
           onSave={handleSaveAndGrade}

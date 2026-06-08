@@ -15,9 +15,15 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({
   onNavigateToReports,
   onNavigateToClasses,
 }) => {
-  const { isAdmin } = useAuth()
+  const { isAdmin, signOut } = useAuth()
   const navigate = useNavigate()
   const [moreOpen, setMoreOpen] = useState(false)
+
+  const handleSignOut = async () => {
+    setMoreOpen(false)
+    await signOut()
+    navigate('/login', { replace: true })
+  }
 
   return (
     <>
@@ -60,6 +66,13 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({
                   <span className="text-xs font-medium">Admin</span>
                 </button>
               )}
+              <button
+                onClick={handleSignOut}
+                className="flex flex-col items-center p-3 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 transition-colors"
+              >
+                <i className="fas fa-sign-out-alt text-xl mb-1"></i>
+                <span className="text-xs font-medium">Sair</span>
+              </button>
             </div>
           </div>
         </>

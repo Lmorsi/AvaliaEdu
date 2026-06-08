@@ -60,6 +60,47 @@ export const useOMR = () => {
     return 'https://avaliaedu-production-00be.up.railway.app'
   }, [])
 
+  // Versão silenciosa do scan: não toca loading/result/error globais do hook.
+  // Usada para processamento em segundo plano enquanto usuário vê o preview.
+  const scanAnswerSheetBackground = useCallback(
+    async (file: File): Promise<OMRResult> => {
+      const formData = new FormData()
+      formData.append('photo', file)
+      formData.append('debug', 'false')
+      const omrUrl = getOMRServiceUrl()
+      try {
+        const response = await fetch(`${omrUrl}/api/omr/scan`, {
+          method: 'POST',
+          body: formData,
+          signal: AbortSignal.timeout(90000),
+        })
+        if (!response.ok) {
+          let errorMsg = `Serviço OMR retornou erro ${response.status}`
+          try {
+            const errorData = await response.json()
+            errorMsg = errorData.error || errorData.detail || errorMsg
+          } catch { /* ignora */ }
+          return { success: false, error: errorMsg }
+        }
+        return await response.json()
+      } catch (err) {
+        const isTimeout =
+          err instanceof DOMException &&
+          (err.name === 'TimeoutError' || err.name === 'AbortError')
+        const isNetwork =
+          err instanceof TypeError &&
+          (err.message.includes('fetch') || err.message.includes('network') || err.message.includes('Failed'))
+        const message = isTimeout
+          ? 'O servidor demorou muito para responder. Verifique sua conexão e tente novamente.'
+          : isNetwork
+            ? 'Não foi possível conectar ao serviço de leitura de gabaritos.'
+            : err instanceof Error ? err.message : 'Erro desconhecido'
+        return { success: false, error: message }
+      }
+    },
+    [getOMRServiceUrl]
+  )
+
   // Upload de imagem para processamento OMR
   const scanAnswerSheet = useCallback(
     async (file: File, debug: boolean = false): Promise<OMRResult> => {
@@ -309,6 +350,7 @@ export const useOMR = () => {
     error,
     result,
     scanAnswerSheet,
+    scanAnswerSheetBackground,
     convertBubblesToAnswers,
     validateQRToken,
     saveStudentOMRResult,

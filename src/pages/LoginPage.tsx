@@ -1,9 +1,11 @@
 import React, { useState } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate()
+  const { signIn } = useAuth()
   const [searchParams] = useSearchParams()
   const redirectTo = searchParams.get('redirect') || '/dashboard'
   const [formData, setFormData] = useState({
@@ -19,13 +21,7 @@ const LoginPage: React.FC = () => {
     setLoading(true)
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: formData.email,
-        password: formData.password
-      })
-
-      if (error) throw error
-
+      await signIn(formData.email, formData.password)
       navigate(redirectTo, { replace: true })
     } catch (err: any) {
       setError(err.message || 'Erro ao fazer login')
