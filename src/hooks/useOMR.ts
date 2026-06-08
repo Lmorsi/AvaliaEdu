@@ -231,13 +231,17 @@ export const useOMR = () => {
         const score = answerKey.length > 0 ? (correctCount / answerKey.length) * 100 : 0
 
         // Busca ou cria o assessment_grading para esta avaliacao+turma
-        const { data: existingGrading } = await supabase
+        // Usa assessment_id como chave primária quando disponível para evitar
+        // que avaliações diferentes com o mesmo nome compartilhem o mesmo registro
+        const query = supabase
           .from('assessment_gradings')
           .select('id')
           .eq('user_id', userId)
           .eq('class_id', classId)
-          .eq('assessment_name', assessmentName)
-          .maybeSingle()
+
+        const { data: existingGrading } = assessmentId
+          ? await query.eq('assessment_id', assessmentId).maybeSingle()
+          : await query.eq('assessment_name', assessmentName).is('assessment_id', null).maybeSingle()
 
         let gradingId: string
 
@@ -249,6 +253,7 @@ export const useOMR = () => {
             .insert({
               user_id: userId,
               class_id: classId,
+              assessment_id: assessmentId || null,
               assessment_name: assessmentName,
               total_questions: answerKey.length,
               answer_key: answerKey,

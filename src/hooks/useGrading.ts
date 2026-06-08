@@ -738,6 +738,7 @@ export const useGrading = (userId: string | undefined, savedAssessments?: any[],
           {
             user_id: userId,
             class_id: selectedClassForGrading.id,
+            assessment_id: selectedAssessmentForGrading?.id || null,
             folder_id: gradingData.folderId,
             assessment_name: gradingData.assessmentName,
             total_questions: gradingData.totalQuestions,
@@ -921,10 +922,14 @@ export const useGrading = (userId: string | undefined, savedAssessments?: any[],
     const groupMap = new Map<string, any>()
 
     gradings.forEach((grading: any) => {
-      const key = `${grading.assessment_name}|||${grading.class_id}`
+      // Use assessment_id as the primary discriminator when available,
+      // fall back to assessment_name to handle legacy records without assessment_id
+      const assessmentKey = grading.assessment_id || `name:${grading.assessment_name}`
+      const key = `${assessmentKey}|||${grading.class_id}`
       if (!groupMap.has(key)) {
         groupMap.set(key, {
           key,
+          assessment_id: grading.assessment_id || null,
           assessment_name: grading.assessment_name,
           class_id: grading.class_id,
           class_name: grading.classes?.name || 'Sem turma',
@@ -950,14 +955,17 @@ export const useGrading = (userId: string | undefined, savedAssessments?: any[],
     return Array.from(groupMap.values())
   }
 
-  const handleViewGroupedReport = async (assessmentName: string, classId: string) => {
+  const handleViewGroupedReport = async (assessmentName: string, classId: string, assessmentId?: string | null) => {
     try {
-      const { data: matchingGradings, error: gradingsError } = await supabase
+      let query = supabase
         .from('assessment_gradings')
         .select('*, classes(name)')
-        .eq('assessment_name', assessmentName)
         .eq('class_id', classId)
         .order('grading_date', { ascending: true })
+
+      const { data: matchingGradings, error: gradingsError } = assessmentId
+        ? await query.eq('assessment_id', assessmentId)
+        : await query.eq('assessment_name', assessmentName).is('assessment_id', null)
 
       if (gradingsError) throw gradingsError
       if (!matchingGradings || matchingGradings.length === 0) return

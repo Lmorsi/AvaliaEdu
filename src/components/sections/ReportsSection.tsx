@@ -37,8 +37,8 @@ const ReportsSection: React.FC<ReportsSectionProps> = ({ dashboard }) => {
     setShowReportModal(true)
   }
 
-  const handleViewGroupedReport = (assessmentName: string, classId: string) => {
-    dashboard.handleViewGroupedReport(assessmentName, classId)
+  const handleViewGroupedReport = (assessmentName: string, classId: string, assessmentId?: string | null) => {
+    dashboard.handleViewGroupedReport(assessmentName, classId, assessmentId)
     setShowReportModal(true)
   }
 
@@ -459,7 +459,7 @@ const ReportsSection: React.FC<ReportsSectionProps> = ({ dashboard }) => {
                   return (
                     <div key={group.key} className="relative group">
                       <button
-                        onClick={() => handleViewGroupedReport(group.assessment_name, group.class_id)}
+                        onClick={() => handleViewGroupedReport(group.assessment_name, group.class_id, group.assessment_id)}
                         className={`w-full text-left border-2 rounded-lg p-4 transition-all ${
                           isSelected
                             ? 'border-orange-500 bg-orange-50 shadow-lg ring-4 ring-orange-200'
