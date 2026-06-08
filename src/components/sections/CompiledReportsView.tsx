@@ -162,6 +162,189 @@ const CompiledReportsView: React.FC<CompiledReportsViewProps> = ({
         </div>
       </div>
 
+      {/* Tabela planilha: um aluno por linha com respostas e % de acerto */}
+      <div className="bg-white border rounded-lg p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-sm font-semibold text-gray-900">
+            <i className="fas fa-table mr-2 text-orange-600"></i>
+            Planilha de Resultados — Respostas e Acertos por Estudante
+          </h4>
+        </div>
+        <div className="overflow-x-auto">
+          <div className="min-w-full inline-block align-middle">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gray-800 text-white">
+                  <th className="text-left p-2 sticky left-0 bg-gray-800 z-10 whitespace-nowrap min-w-[160px]">Estudante</th>
+                  <th className="text-center p-2 whitespace-nowrap min-w-[80px]">Turma</th>
+                  {itemGroups.map((_: number[], itemIndex: number) => (
+                    <th key={itemIndex} className="text-center p-2 min-w-[42px] font-medium">
+                      {itemIndex + 1}
+                    </th>
+                  ))}
+                  <th className="text-center p-2 whitespace-nowrap min-w-[70px]">Acertos</th>
+                  <th className="text-center p-2 whitespace-nowrap min-w-[70px]">%</th>
+                </tr>
+                {/* linha do gabarito */}
+                <tr className="bg-yellow-100 border-b-2 border-yellow-400">
+                  <td className="p-2 sticky left-0 bg-yellow-100 z-10 text-xs font-bold text-gray-700 uppercase tracking-wide">Gabarito</td>
+                  <td className="p-2"></td>
+                  {itemGroups.map((group: number[], itemIndex: number) => {
+                    if (group.length === 1) {
+                      const answer = answerKey[group[0]] || ''
+                      return (
+                        <td key={itemIndex} className="text-center p-1">
+                          <span className="inline-flex items-center justify-center w-7 h-7 text-xs font-bold rounded bg-yellow-300 text-gray-800 border border-yellow-500">
+                            {answer}
+                          </span>
+                        </td>
+                      )
+                    }
+                    const answers = group.map((idx: number) => answerKey[idx] || '').join(',')
+                    return (
+                      <td key={itemIndex} className="text-center p-1">
+                        <span className="inline-flex items-center justify-center px-1 min-w-[28px] h-7 text-xs font-bold rounded bg-yellow-300 text-gray-800 border border-yellow-500">
+                          {answers}
+                        </span>
+                      </td>
+                    )
+                  })}
+                  <td className="p-2"></td>
+                  <td className="p-2"></td>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredReports.map((report) => {
+                  const sortedStudents = [...(report.student_results || [])].sort((a: any, b: any) => {
+                    if (a.absent && !b.absent) return 1
+                    if (!a.absent && b.absent) return -1
+                    return b.score - a.score
+                  })
+
+                  return (
+                    <React.Fragment key={report.id}>
+                      {filteredReports.length > 1 && (
+                        <tr className="bg-teal-50 border-t-2 border-teal-300">
+                          <td colSpan={itemGroups.length + 4} className="p-2 text-xs font-bold text-teal-800 uppercase tracking-wide">
+                            <i className="fas fa-users mr-2"></i>
+                            {report.class_name}
+                          </td>
+                        </tr>
+                      )}
+                      {sortedStudents.map((result: any, idx: number) => {
+                        const isAbsent = result.absent === true
+                        const rowBg = isAbsent
+                          ? 'bg-gray-50 opacity-60'
+                          : idx % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50 hover:bg-gray-100'
+
+                        const getScoreColor = (score: number) => {
+                          if (score >= 90) return 'text-blue-700 font-bold'
+                          if (score >= 70) return 'text-green-700 font-bold'
+                          if (score >= 50) return 'text-yellow-700 font-bold'
+                          return 'text-red-700 font-bold'
+                        }
+
+                        const totalItems = itemGroups.length
+                        const correctItems = isAbsent ? 0 : itemGroups.reduce((sum: number, group: number[]) => {
+                          if (group.length === 1) {
+                            const idx = group[0]
+                            const ans = result.answers?.[idx] || ''
+                            const correct = answerKey[idx] || ''
+                            return sum + (ans && ans.toUpperCase() === correct.toUpperCase() ? 1 : 0)
+                          }
+                          const allCorrect = group.every((i: number) => {
+                            const ans = result.answers?.[i] || ''
+                            const correct = answerKey[i] || ''
+                            return ans && ans.toUpperCase() === correct.toUpperCase()
+                          })
+                          return sum + (allCorrect ? 1 : 0)
+                        }, 0)
+
+                        return (
+                          <tr key={result.id || idx} className={`border-b transition-colors ${rowBg}`}>
+                            <td className={`p-2 sticky left-0 z-10 text-sm font-medium ${isAbsent ? 'bg-gray-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                              <div className="flex items-center gap-2">
+                                <span className="truncate max-w-[140px]" title={result.student_name}>{result.student_name}</span>
+                                {isAbsent && (
+                                  <span className="text-xs bg-gray-400 text-white px-1.5 py-0.5 rounded shrink-0">Faltoso</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="text-center p-2 text-xs text-gray-500 whitespace-nowrap">{report.class_name}</td>
+                            {itemGroups.map((group: number[], itemIndex: number) => {
+                              if (isAbsent) {
+                                return (
+                                  <td key={itemIndex} className="text-center p-1">
+                                    <span className="inline-flex items-center justify-center w-7 h-7 text-xs font-bold rounded bg-gray-200 text-gray-400 border border-gray-300">—</span>
+                                  </td>
+                                )
+                              }
+                              if (group.length === 1) {
+                                const i = group[0]
+                                const ans = result.answers?.[i] || ''
+                                const correct = answerKey[i] || ''
+                                const isCorrect = ans && ans.toUpperCase() === correct.toUpperCase()
+                                const isBlank = !ans || !ans.trim()
+                                return (
+                                  <td key={itemIndex} className="text-center p-1">
+                                    <span className={`inline-flex items-center justify-center w-7 h-7 text-xs font-bold rounded border ${
+                                      isBlank ? 'bg-gray-100 text-gray-400 border-gray-300'
+                                      : isCorrect ? 'bg-green-500 text-white border-green-600'
+                                      : 'bg-red-500 text-white border-red-600'
+                                    }`}>
+                                      {ans || '—'}
+                                    </span>
+                                  </td>
+                                )
+                              }
+                              const answers = group.map((i: number) => result.answers?.[i] || '')
+                              const allCorrect = group.every((i: number, gi: number) => {
+                                const ans = answers[gi] || ''
+                                const correct = answerKey[i] || ''
+                                return ans && ans.toUpperCase() === correct.toUpperCase()
+                              })
+                              const anyBlank = answers.every((a: string) => !a || !a.trim())
+                              const display = answers.map((a: string) => a || '—').join(',')
+                              return (
+                                <td key={itemIndex} className="text-center p-1">
+                                  <span className={`inline-flex items-center justify-center px-1 min-w-[28px] h-7 text-xs font-bold rounded border ${
+                                    anyBlank ? 'bg-gray-100 text-gray-400 border-gray-300'
+                                    : allCorrect ? 'bg-green-500 text-white border-green-600'
+                                    : 'bg-red-500 text-white border-red-600'
+                                  }`}>
+                                    {display}
+                                  </span>
+                                </td>
+                              )
+                            })}
+                            <td className="text-center p-2 text-sm">
+                              {isAbsent ? (
+                                <span className="text-gray-400">—</span>
+                              ) : (
+                                <span className="font-semibold text-gray-700">{correctItems}/{totalItems}</span>
+                              )}
+                            </td>
+                            <td className="text-center p-2">
+                              {isAbsent ? (
+                                <span className="text-gray-400 text-sm">—</span>
+                              ) : (
+                                <span className={`text-sm ${getScoreColor(result.score)}`}>
+                                  {result.score.toFixed(1)}%
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </React.Fragment>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <div className="bg-white border rounded-lg p-4">
         <h4 className="text-sm font-semibold text-gray-900 mb-3">
           <i className="fas fa-chart-line mr-2 text-teal-600"></i>
