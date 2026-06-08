@@ -350,7 +350,7 @@ const MobileGradingPage: React.FC = () => {
             )}
 
             <button
-              onClick={startCamera}
+              onClick={() => fileInputRef.current?.click()}
               className="w-full bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 active:from-blue-800 active:to-blue-900 rounded-2xl p-8 flex flex-col items-center gap-4 border border-blue-500 transition shadow-lg hover:shadow-xl touch-manipulation"
             >
               <Camera className="w-24 h-24 text-white drop-shadow-lg" />
@@ -360,31 +360,14 @@ const MobileGradingPage: React.FC = () => {
               </div>
             </button>
 
-            <div className="space-y-3">
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-700" />
-                </div>
-                <div className="relative flex justify-center">
-                  <span className="px-2 bg-gray-950 text-gray-500 text-sm">ou</span>
-                </div>
-              </div>
-
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full bg-gray-800 hover:bg-gray-700 active:bg-gray-900 text-gray-300 py-3 px-4 rounded-lg transition border border-gray-700 font-medium touch-manipulation"
-              >
-                Escolher Arquivo da Galeria
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={handleFileChange}
-                className="hidden"
-              />
-            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleFileChange}
+              className="hidden"
+            />
           </div>
         )}
 
@@ -495,21 +478,13 @@ const MobileGradingPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <button
-                onClick={() => navigate('/scan')}
-                className="w-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white py-3 px-4 rounded-xl font-bold transition flex items-center justify-center gap-2"
-              >
-                <ScanLine className="w-5 h-5" />
-                Escanear Próximo Aluno
-              </button>
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="w-full bg-gray-800 hover:bg-gray-700 active:scale-95 text-gray-300 py-3 px-4 rounded-xl transition"
-              >
-                Ver Relatórios
-              </button>
-            </div>
+            <button
+              onClick={() => navigate('/scan')}
+              className="w-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white py-3 px-4 rounded-xl font-bold transition flex items-center justify-center gap-2"
+            >
+              <ScanLine className="w-5 h-5" />
+              Escanear Próximo Aluno
+            </button>
           </div>
         )}
       </div>
