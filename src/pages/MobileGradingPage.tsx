@@ -362,7 +362,9 @@ const MobileGradingPage: React.FC = () => {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div className="text-center">
-          <h1 className="text-white font-semibold text-sm">{tokenData.student_name}</h1>
+          <h1 className="text-white font-semibold text-sm">
+            {autoIdentifyFromPhoto ? 'Identificando aluno...' : tokenData.student_name}
+          </h1>
           <p className="text-gray-400 text-xs">{tokenData.assessment_name} · {tokenData.class_name}</p>
         </div>
         <div className="w-5" />
