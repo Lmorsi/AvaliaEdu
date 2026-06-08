@@ -917,6 +917,117 @@ export const useGrading = (userId: string | undefined, savedAssessments?: any[],
     }
   }
 
+  const getGroupedGradings = () => {
+    const groupMap = new Map<string, any>()
+
+    gradings.forEach((grading: any) => {
+      const key = `${grading.assessment_name}|||${grading.class_id}`
+      if (!groupMap.has(key)) {
+        groupMap.set(key, {
+          key,
+          assessment_name: grading.assessment_name,
+          class_id: grading.class_id,
+          class_name: grading.classes?.name || 'Sem turma',
+          grading_ids: [grading.id],
+          folder_id: grading.folder_id || null,
+          latest_date: grading.grading_date,
+          total_questions: grading.total_questions,
+          answer_key: grading.answer_key,
+          item_descriptors: grading.item_descriptors || [],
+          item_types: grading.item_types || [],
+          item_groups: grading.item_groups || [],
+          item_alternatives: grading.item_alternatives || [],
+        })
+      } else {
+        const existing = groupMap.get(key)
+        existing.grading_ids.push(grading.id)
+        if (grading.grading_date > existing.latest_date) {
+          existing.latest_date = grading.grading_date
+        }
+      }
+    })
+
+    return Array.from(groupMap.values())
+  }
+
+  const handleViewGroupedReport = async (assessmentName: string, classId: string) => {
+    try {
+      const { data: matchingGradings, error: gradingsError } = await supabase
+        .from('assessment_gradings')
+        .select('*, classes(name)')
+        .eq('assessment_name', assessmentName)
+        .eq('class_id', classId)
+        .order('grading_date', { ascending: true })
+
+      if (gradingsError) throw gradingsError
+      if (!matchingGradings || matchingGradings.length === 0) return
+
+      const representative = matchingGradings[matchingGradings.length - 1]
+      const allResults: any[] = []
+
+      for (const grading of matchingGradings) {
+        const { data: results, error: resultsError } = await supabase
+          .from('student_results')
+          .select('*, grading_students(name)')
+          .eq('grading_id', grading.id)
+
+        if (resultsError) throw resultsError
+
+        results.forEach((r: any) => {
+          const answers = r.answers || []
+          const isAbsent = answers.length === 0 || answers.every((a: string) => !a || a.trim() === '')
+          allResults.push({
+            ...r,
+            student_name: r.grading_students?.name || 'Aluno',
+            absent: isAbsent,
+          })
+        })
+      }
+
+      // Keep only the latest result per student (by created_at desc, then take first seen)
+      const seenStudents = new Set<string>()
+      const deduped: any[] = []
+      // Sort newest first so first occurrence = latest
+      allResults.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      allResults.forEach(r => {
+        if (!seenStudents.has(r.student_id)) {
+          seenStudents.add(r.student_id)
+          deduped.push(r)
+        }
+      })
+
+      // Sort alphabetically
+      deduped.sort((a, b) => a.student_name.localeCompare(b.student_name, 'pt-BR'))
+
+      const presentStudents = deduped.filter((r: any) => !r.absent)
+      const averageScore = presentStudents.length > 0
+        ? presentStudents.reduce((sum: number, r: any) => sum + r.score, 0) / presentStudents.length
+        : 0
+      const studentsBelow30 = presentStudents.filter((r: any) => r.score < 30).length
+      const lowPerformers = presentStudents
+        .filter((r: any) => r.score < 30)
+        .map((r: any) => ({ id: r.id, name: r.student_name, score: r.score, correct_count: r.correct_count }))
+
+      setSelectedReport({
+        ...representative,
+        class_name: representative.classes?.name || 'Sem turma',
+        student_results: deduped,
+        question_stats: [],
+        total_students: deduped.length,
+        average_score: averageScore,
+        students_below_30: studentsBelow30,
+        low_performers: lowPerformers,
+        item_descriptors: representative.item_descriptors || [],
+        item_types: representative.item_types || [],
+        item_groups: representative.item_groups || [],
+        item_alternatives: representative.item_alternatives || [],
+      })
+    } catch (error) {
+      console.error('Erro ao carregar relatório agrupado:', error)
+      alert('Erro ao carregar relatório')
+    }
+  }
+
   const getUniqueAssessments = () => {
     const assessmentMap = new Map<string, any>()
 
@@ -1296,9 +1407,11 @@ export const useGrading = (userId: string | undefined, savedAssessments?: any[],
     handleStudentAnswerChange,
     handleSaveGrading,
     handleViewReport,
+    handleViewGroupedReport,
     handleDeleteGrading,
     handleExportReport,
     getUniqueAssessments,
+    getGroupedGradings,
     handleCompileReports,
     handleCreateFolder,
     handleDeleteFolder,

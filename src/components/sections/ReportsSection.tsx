@@ -37,6 +37,11 @@ const ReportsSection: React.FC<ReportsSectionProps> = ({ dashboard }) => {
     setShowReportModal(true)
   }
 
+  const handleViewGroupedReport = (assessmentName: string, classId: string) => {
+    dashboard.handleViewGroupedReport(assessmentName, classId)
+    setShowReportModal(true)
+  }
+
   const handleCloseReportModal = () => {
     setShowReportModal(false)
   }
@@ -427,7 +432,7 @@ const ReportsSection: React.FC<ReportsSectionProps> = ({ dashboard }) => {
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-medium text-gray-700">
                   <i className="fas fa-list mr-2"></i>
-                  Correções Disponíveis
+                  Correções por Turma
                 </h3>
                 <button
                   onClick={() => dashboard.setShowFolderModal(true)}
@@ -439,15 +444,22 @@ const ReportsSection: React.FC<ReportsSectionProps> = ({ dashboard }) => {
               </div>
 
               {(() => {
-                const rootFolders = Array.isArray(dashboard.folders) ? dashboard.folders.filter((f: any) => !f.parent_folder_id) : []
-                const ungroupedGradings = Array.isArray(dashboard.gradings) ? dashboard.gradings.filter((g: any) => !g.folder_id) : []
+                const groupedGradings = typeof dashboard.getGroupedGradings === 'function'
+                  ? dashboard.getGroupedGradings()
+                  : []
 
-                const renderGradingCard = (grading: any, inFolder = false) => {
-                  const isSelected = dashboard.selectedReport?.id === grading.id
+                const rootFolders = Array.isArray(dashboard.folders) ? dashboard.folders.filter((f: any) => !f.parent_folder_id) : []
+                const ungroupedGroups = groupedGradings.filter((g: any) => !g.folder_id)
+
+                const renderGroupCard = (group: any) => {
+                  const isSelected = dashboard.selectedReport?.assessment_name === group.assessment_name &&
+                    dashboard.selectedReport?.class_id === group.class_id
+                  const studentCount = group.grading_ids?.length || 1
+
                   return (
-                    <div key={grading.id} className="relative group">
+                    <div key={group.key} className="relative group">
                       <button
-                        onClick={() => handleViewIndividualReport(grading.id)}
+                        onClick={() => handleViewGroupedReport(group.assessment_name, group.class_id)}
                         className={`w-full text-left border-2 rounded-lg p-4 transition-all ${
                           isSelected
                             ? 'border-orange-500 bg-orange-50 shadow-lg ring-4 ring-orange-200'
@@ -458,9 +470,7 @@ const ReportsSection: React.FC<ReportsSectionProps> = ({ dashboard }) => {
                           <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
                             isSelected ? 'bg-orange-100' : 'bg-gray-100'
                           }`}>
-                            <i className={`fas fa-file-alt ${
-                              isSelected ? 'text-orange-600' : 'text-gray-400'
-                            }`}></i>
+                            <i className={`fas fa-users ${isSelected ? 'text-orange-600' : 'text-gray-400'}`}></i>
                           </div>
                           {isSelected && (
                             <div className="bg-orange-500 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
@@ -469,72 +479,47 @@ const ReportsSection: React.FC<ReportsSectionProps> = ({ dashboard }) => {
                             </div>
                           )}
                         </div>
-                        <h4 className={`font-semibold mb-2 ${
-                          isSelected ? 'text-orange-900' : 'text-gray-900'
-                        }`}>
-                          {grading.assessment_name}
+                        <h4 className={`font-semibold mb-2 ${isSelected ? 'text-orange-900' : 'text-gray-900'}`}>
+                          {group.assessment_name}
                         </h4>
                         <div className="space-y-1">
-                          {grading.classes?.name && (
-                            <p className="text-xs text-gray-600 flex items-center">
-                              <i className="fas fa-users mr-2 text-gray-400"></i>
-                              {grading.classes.name}
-                            </p>
-                          )}
+                          <p className="text-xs text-gray-600 flex items-center">
+                            <i className="fas fa-users mr-2 text-gray-400"></i>
+                            {group.class_name}
+                          </p>
+                          <p className="text-xs text-gray-600 flex items-center">
+                            <i className="fas fa-user-graduate mr-2 text-gray-400"></i>
+                            {studentCount} aluno{studentCount !== 1 ? 's' : ''} corrigido{studentCount !== 1 ? 's' : ''}
+                          </p>
                           <p className="text-xs text-gray-600 flex items-center">
                             <i className="fas fa-calendar mr-2 text-gray-400"></i>
-                            {new Date(grading.grading_date).toLocaleDateString('pt-BR', {
+                            {new Date(group.latest_date).toLocaleDateString('pt-BR', {
                               day: '2-digit',
                               month: 'long',
                               year: 'numeric'
                             })}
                           </p>
-                          <p className="text-xs text-gray-600 flex items-center">
-                            <i className="fas fa-list-ol mr-2 text-gray-400"></i>
-                            {grading.total_questions} questões
-                          </p>
                         </div>
                         <div className="mt-3 pt-3 border-t border-gray-200 flex items-center justify-between">
-                          <span className={`text-xs font-medium ${
-                            isSelected ? 'text-orange-600' : 'text-gray-500'
-                          }`}>
+                          <span className={`text-xs font-medium ${isSelected ? 'text-orange-600' : 'text-gray-500'}`}>
                             Ver relatório <i className="fas fa-arrow-right ml-1"></i>
                           </span>
                           <button
                             onClick={async (e) => {
                               e.stopPropagation()
-                              const success = await dashboard.handleDeleteGrading(grading.id)
-                              if (success) {
-                                dashboard.loadGradings()
+                              if (!confirm(`Excluir todas as correções de "${group.assessment_name}" na turma "${group.class_name}"? Esta ação não pode ser desfeita.`)) return
+                              for (const gId of group.grading_ids) {
+                                await dashboard.handleDeleteGrading(gId)
                               }
+                              dashboard.loadGradings()
                             }}
                             className="text-red-500 hover:text-red-700 transition-colors p-1"
-                            title="Excluir correção"
+                            title="Excluir correções"
                           >
                             <i className="fas fa-trash text-sm"></i>
                           </button>
                         </div>
                       </button>
-                      {inFolder && (
-                        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <select
-                            value={grading.folder_id || ''}
-                            onChange={(e) => {
-                              e.stopPropagation()
-                              dashboard.handleMoveGradingToFolder(grading.id, e.target.value || null)
-                            }}
-                            className="text-xs border border-gray-300 rounded px-2 py-1 bg-white shadow-sm"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <option value="">Sem pasta</option>
-                            {dashboard.folders?.map((folder: any) => (
-                              <option key={folder.id} value={folder.id}>
-                                {folder.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
                     </div>
                   )
                 }
@@ -543,7 +528,7 @@ const ReportsSection: React.FC<ReportsSectionProps> = ({ dashboard }) => {
                   <div className="space-y-4">
                     {rootFolders.map((folder: any) => {
                       const subfolders = Array.isArray(dashboard.folders) ? dashboard.folders.filter((f: any) => f.parent_folder_id === folder.id) : []
-                      const folderGradings = Array.isArray(dashboard.gradings) ? dashboard.gradings.filter((g: any) => g.folder_id === folder.id) : []
+                      const folderGroups = groupedGradings.filter((g: any) => g.folder_id === folder.id)
                       const isExpanded = dashboard.expandedFolders?.has(folder.id)
 
                       return (
@@ -562,7 +547,7 @@ const ReportsSection: React.FC<ReportsSectionProps> = ({ dashboard }) => {
                               <div className="text-left">
                                 <h4 className="font-semibold text-gray-900">{folder.name}</h4>
                                 <p className="text-xs text-gray-500">
-                                  {folderGradings.length} correç{folderGradings.length === 1 ? 'ão' : 'ões'}
+                                  {folderGroups.length} correç{folderGroups.length === 1 ? 'ão' : 'ões'}
                                   {subfolders.length > 0 && ` • ${subfolders.length} subpasta${subfolders.length === 1 ? '' : 's'}`}
                                 </p>
                               </div>
@@ -571,19 +556,15 @@ const ReportsSection: React.FC<ReportsSectionProps> = ({ dashboard }) => {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  if (confirm(`Tem certeza que deseja excluir a pasta "${folder.name}"? As correções dentro dela não serão excluídas.`)) {
+                                  if (confirm(`Excluir a pasta "${folder.name}"? As correções dentro dela não serão excluídas.`)) {
                                     dashboard.handleDeleteFolder(folder.id)
                                   }
                                 }}
                                 className="text-red-600 hover:text-red-700 p-2 hover:bg-red-50 rounded transition-colors"
-                                title="Excluir pasta"
                               >
                                 <i className="fas fa-trash text-sm"></i>
                               </button>
-                              <button
-                                onClick={() => dashboard.toggleFolderExpansion(folder.id)}
-                                className="p-2"
-                              >
+                              <button onClick={() => dashboard.toggleFolderExpansion(folder.id)} className="p-2">
                                 <i className={`fas fa-chevron-${isExpanded ? 'up' : 'down'} text-gray-400`}></i>
                               </button>
                             </div>
@@ -591,14 +572,14 @@ const ReportsSection: React.FC<ReportsSectionProps> = ({ dashboard }) => {
 
                           {isExpanded && (
                             <div className="p-4 bg-gray-50 space-y-4">
-                              {folderGradings.length > 0 && (
+                              {folderGroups.length > 0 && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                  {folderGradings.map((grading: any) => renderGradingCard(grading, true))}
+                                  {folderGroups.map((group: any) => renderGroupCard(group))}
                                 </div>
                               )}
 
                               {subfolders.map((subfolder: any) => {
-                                const subfolderGradings = Array.isArray(dashboard.gradings) ? dashboard.gradings.filter((g: any) => g.folder_id === subfolder.id) : []
+                                const subGroups = groupedGradings.filter((g: any) => g.folder_id === subfolder.id)
                                 const isSubExpanded = dashboard.expandedFolders?.has(subfolder.id)
 
                                 return (
@@ -617,37 +598,31 @@ const ReportsSection: React.FC<ReportsSectionProps> = ({ dashboard }) => {
                                         </div>
                                         <div className="text-left">
                                           <h5 className="font-medium text-gray-900 text-sm">{subfolder.name}</h5>
-                                          <p className="text-xs text-gray-500">
-                                            {subfolderGradings.length} correç{subfolderGradings.length === 1 ? 'ão' : 'ões'}
-                                          </p>
+                                          <p className="text-xs text-gray-500">{subGroups.length} correç{subGroups.length === 1 ? 'ão' : 'ões'}</p>
                                         </div>
                                       </button>
                                       <div className="flex items-center gap-2">
                                         <button
                                           onClick={(e) => {
                                             e.stopPropagation()
-                                            if (confirm(`Tem certeza que deseja excluir a subpasta "${subfolder.name}"? As correções dentro dela não serão excluídas.`)) {
+                                            if (confirm(`Excluir a subpasta "${subfolder.name}"?`)) {
                                               dashboard.handleDeleteFolder(subfolder.id)
                                             }
                                           }}
                                           className="text-red-600 hover:text-red-700 p-2 hover:bg-red-50 rounded transition-colors"
-                                          title="Excluir subpasta"
                                         >
                                           <i className="fas fa-trash text-xs"></i>
                                         </button>
-                                        <button
-                                          onClick={() => dashboard.toggleFolderExpansion(subfolder.id)}
-                                          className="p-2"
-                                        >
+                                        <button onClick={() => dashboard.toggleFolderExpansion(subfolder.id)} className="p-2">
                                           <i className={`fas fa-chevron-${isSubExpanded ? 'up' : 'down'} text-gray-400`}></i>
                                         </button>
                                       </div>
                                     </div>
 
-                                    {isSubExpanded && subfolderGradings.length > 0 && (
+                                    {isSubExpanded && subGroups.length > 0 && (
                                       <div className="p-3 bg-white">
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                          {subfolderGradings.map((grading: any) => renderGradingCard(grading, true))}
+                                          {subGroups.map((group: any) => renderGroupCard(group))}
                                         </div>
                                       </div>
                                     )}
@@ -655,7 +630,7 @@ const ReportsSection: React.FC<ReportsSectionProps> = ({ dashboard }) => {
                                 )
                               })}
 
-                              {folderGradings.length === 0 && subfolders.length === 0 && (
+                              {folderGroups.length === 0 && subfolders.length === 0 && (
                                 <div className="text-center py-6 text-gray-400">
                                   <i className="fas fa-inbox text-2xl mb-2"></i>
                                   <p className="text-xs">Pasta vazia</p>
@@ -667,112 +642,14 @@ const ReportsSection: React.FC<ReportsSectionProps> = ({ dashboard }) => {
                       )
                     })}
 
-                    {ungroupedGradings.length > 0 && (
+                    {ungroupedGroups.length > 0 && (
                       <div>
                         <h4 className="text-sm font-medium text-gray-600 mb-3 flex items-center gap-2">
                           <i className="fas fa-file-alt"></i>
                           Sem Pasta
-                          <span className="text-xs text-gray-400 font-normal">
-                            (passe o mouse sobre os cards para mover para pastas)
-                          </span>
                         </h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {ungroupedGradings.map((grading: any) => {
-                            const isSelected = dashboard.selectedReport?.id === grading.id
-                            return (
-                              <div key={grading.id} className="relative group">
-                                <button
-                                  onClick={() => handleViewIndividualReport(grading.id)}
-                                  className={`w-full text-left border-2 rounded-lg p-4 transition-all ${
-                                    isSelected
-                                      ? 'border-orange-500 bg-orange-50 shadow-lg ring-4 ring-orange-200'
-                                      : 'border-gray-200 hover:border-orange-300 hover:shadow-md bg-white'
-                                  }`}
-                                >
-                                  <div className="flex items-start justify-between mb-3">
-                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                                      isSelected ? 'bg-orange-100' : 'bg-gray-100'
-                                    }`}>
-                                      <i className={`fas fa-file-alt ${
-                                        isSelected ? 'text-orange-600' : 'text-gray-400'
-                                      }`}></i>
-                                    </div>
-                                    {isSelected && (
-                                      <div className="bg-orange-500 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
-                                        <i className="fas fa-check-circle"></i>
-                                        Selecionada
-                                      </div>
-                                    )}
-                                  </div>
-                                  <h4 className={`font-semibold mb-2 ${
-                                    isSelected ? 'text-orange-900' : 'text-gray-900'
-                                  }`}>
-                                    {grading.assessment_name}
-                                  </h4>
-                                  <div className="space-y-1">
-                                    {grading.classes?.name && (
-                                      <p className="text-xs text-gray-600 flex items-center">
-                                        <i className="fas fa-users mr-2 text-gray-400"></i>
-                                        {grading.classes.name}
-                                      </p>
-                                    )}
-                                    <p className="text-xs text-gray-600 flex items-center">
-                                      <i className="fas fa-calendar mr-2 text-gray-400"></i>
-                                      {new Date(grading.grading_date).toLocaleDateString('pt-BR', {
-                                        day: '2-digit',
-                                        month: 'long',
-                                        year: 'numeric'
-                                      })}
-                                    </p>
-                                    <p className="text-xs text-gray-600 flex items-center">
-                                      <i className="fas fa-list-ol mr-2 text-gray-400"></i>
-                                      {grading.total_questions} questões
-                                    </p>
-                                  </div>
-                                  <div className="mt-3 pt-3 border-t border-gray-200 flex items-center justify-between">
-                                    <span className={`text-xs font-medium ${
-                                      isSelected ? 'text-orange-600' : 'text-gray-500'
-                                    }`}>
-                                      Ver relatório <i className="fas fa-arrow-right ml-1"></i>
-                                    </span>
-                                    <button
-                                      onClick={async (e) => {
-                                        e.stopPropagation()
-                                        const success = await dashboard.handleDeleteGrading(grading.id)
-                                        if (success) {
-                                          dashboard.loadGradings()
-                                        }
-                                      }}
-                                      className="text-red-500 hover:text-red-700 transition-colors p-1"
-                                      title="Excluir correção"
-                                    >
-                                      <i className="fas fa-trash text-sm"></i>
-                                    </button>
-                                  </div>
-                                </button>
-                                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <select
-                                    value=""
-                                    onChange={(e) => {
-                                      e.stopPropagation()
-                                      if (e.target.value) {
-                                        dashboard.handleMoveGradingToFolder(grading.id, e.target.value)
-                                      }
-                                    }}
-                                    className="text-xs border border-gray-300 rounded px-2 py-1 bg-white shadow-sm"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <option value="">Mover para...</option>
-                                    {dashboard.folders?.map((folder: any) => (
-                                      <option key={folder.id} value={folder.id}>
-                                        {folder.parent_folder_id ? '└ ' : ''}{folder.name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                              </div>
-                            )
-                          })}
+                          {ungroupedGroups.map((group: any) => renderGroupCard(group))}
                         </div>
                       </div>
                     )}
