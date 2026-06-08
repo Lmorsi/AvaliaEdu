@@ -76,7 +76,7 @@ export const useOMR = () => {
         const response = await fetch(`${omrUrl}/api/omr/scan`, {
           method: 'POST',
           body: formData,
-          signal: AbortSignal.timeout(30000),
+          signal: AbortSignal.timeout(90000),
         })
 
         if (!response.ok) {
@@ -94,13 +94,19 @@ export const useOMR = () => {
         setResult(data)
         return data
       } catch (err) {
-        const isAbort = err instanceof DOMException && err.name === 'AbortError'
-        const isNetwork = err instanceof TypeError && err.message.includes('fetch')
+        // AbortSignal.timeout() lança TimeoutError (DOMException name 'TimeoutError')
+        // enquanto abort() manual lança AbortError — ambos precisam ser tratados
+        const isTimeout =
+          err instanceof DOMException &&
+          (err.name === 'TimeoutError' || err.name === 'AbortError')
+        const isNetwork =
+          err instanceof TypeError &&
+          (err.message.includes('fetch') || err.message.includes('network') || err.message.includes('Failed'))
         let message: string
-        if (isAbort) {
-          message = 'Tempo limite excedido ao conectar ao serviço de leitura de gabaritos.'
+        if (isTimeout) {
+          message = 'O servidor demorou muito para responder. Verifique sua conexão e tente novamente.'
         } else if (isNetwork) {
-          message = 'Serviço de leitura de gabaritos não está acessível. Verifique se o servidor OMR está em execução.'
+          message = 'Não foi possível conectar ao serviço de leitura de gabaritos. Verifique sua conexão com a internet.'
         } else {
           message = err instanceof Error ? err.message : 'Erro desconhecido'
         }

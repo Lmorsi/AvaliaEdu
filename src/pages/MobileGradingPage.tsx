@@ -494,6 +494,7 @@ const MobileGradingPage: React.FC = () => {
           <div className="text-center space-y-4">
             <Loader className="w-12 h-12 animate-spin text-blue-600 mx-auto" />
             <p className="text-gray-300 font-medium">Processando gabarito...</p>
+            <p className="text-gray-500 text-sm">Isso pode levar até 1 minuto.<br />Aguarde sem fechar a tela.</p>
           </div>
         )}
 
